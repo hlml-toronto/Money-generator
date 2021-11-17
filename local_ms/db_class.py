@@ -15,20 +15,19 @@ SPY    | USD      | ETF       | us_market | PCX      | Apple Inc.
 
 For each ticker there are several associated tables:
 
-    Table #2a: MSFT_days
-    Timestamp | ... | ... | ... | ...
+    Table: MSFT_days
+    date | open | high | low | close | volume
     ------------------------------------------------------------------------------
     
-    Table #3a: MSFT_minutes 
-    Timestamp | ... | ... | ... | ...
+    Table: MSFT_minutes 
+    date | open | high | low | close | volume
     ------------------------------------------------------------------------------
-
-
+    
 Notes: data from yfinance package - ticker.ATTRIBUTE (e.g. msft.info) 
 
 Notes: ticker.info   - dict with ~40 to ~150 keys depending on ticker
 - ETFs don't have 'financialCurrency', 'country', 'sector', 'industry'
-- ETFs can have 'holdings' (list) and 'sectorWeightings' (list)
+- ETFs can have 'holdings' (list) and 'sectorWeightings' (list), but EQUITY generally won't
 
 Notes: ticker.actions
 - dataframe with 3 columns: Date, Dividends, and Stock Splits 
