@@ -237,8 +237,17 @@ if __name__ == '__main__':
     print('List of tickers:')
     db.get_tickers(verbose=True)
 
-    print('\nRemoving a specific ticker: SPY')
-    db.remove_ticker('SPY')
+    ticker_test = 'MSFT'
+    print('\nRemoving a specific ticker:', ticker_test)
+    db.remove_ticker(ticker_test)
+
+    print('\nShow tickers:')
+    db.show_table(tablename='tickers')
+    print('List of tickers:')
+    db.get_tickers(verbose=True)
+
+    print('\nAdding back a specific ticker:', ticker_test)
+    db.add_ticker(ticker_test)
 
     print('\nShow tickers:')
     db.show_table(tablename='tickers')
