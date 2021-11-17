@@ -6,7 +6,7 @@ from db_settings import DB_PATH, DB_TICKERS
 """
 Overview: Database structure
 
-Table #1: Tickers
+Table #1: tickers
 symbol | currency | quoteType | market    | exchange | longName
 ------------------------------------------------------------------------------
 MSFT   | USD      | EQUITY    | us_market | NMS      | Microsoft Corporation
@@ -15,13 +15,19 @@ SPY    | USD      | ETF       | us_market | PCX      | Apple Inc.
 
 For each ticker there are several associated tables:
 
-    Table: MSFT_days
+    Table: SPY_days
     date | open | high | low | close | volume
     ------------------------------------------------------------------------------
+    1993-01-29   25.735677   25.735677   25.607639   25.717386   1003200
+    ...
+    2021-11-16  467.149994  470.489990  467.070007  469.279999  48707600
     
-    Table: MSFT_minutes 
+    Table: SPY_minutes 
     date | open | high | low | close | volume
     ------------------------------------------------------------------------------
+    2021-11-16 09:30:00-05:00 	467.149994 	467.420013 	467.079987 	467.089996 	894038
+    ...
+    2021-11-16 13:08:00-05:00 	470.132507 	470.209991 	470.130096 	470.142487 	26438
     
 Notes: data from yfinance package - ticker.ATTRIBUTE (e.g. msft.info) 
 
