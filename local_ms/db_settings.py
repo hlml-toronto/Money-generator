@@ -1,2 +1,4 @@
 DB_PATH = 'database_yfinance.db'
-DB_TABLE_PRIMARY = 'yfinance'
+
+# list of ticker strings corresponding to yahoo finance tickers (to generate database)
+DB_TICKERS = ['MSFT', 'AAPL', 'HUT', 'HUT.TO', 'SPY']
