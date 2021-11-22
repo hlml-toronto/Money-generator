@@ -1,5 +1,6 @@
 import sqlite3
 import yfinance as yf
+from datetime import datetime, timedelta
 
 from db_settings import DB_PATH, DB_TICKERS
 
@@ -7,11 +8,14 @@ from db_settings import DB_PATH, DB_TICKERS
 Overview: Database structure
 
 Table #1: tickers
-symbol | currency | quoteType | market    | exchange | longName
+symbol    | currency | quoteType       | market     | exchange | longName  
 ------------------------------------------------------------------------------
-MSFT   | USD      | EQUITY    | us_market | NMS      | Microsoft Corporation
-...    | ...      | ...       | ...       | ...      | ...
-SPY    | USD      | ETF       | us_market | PCX      | Apple Inc.
+MSFT      | USD      | EQUITY          | us_market  | NMS      | Microsoft Corporation
+...       | ...      | ...             | ...        | ...      | ...
+SPY       | USD      | ETF             | us_market  | PCX      | Apple Inc.
+CADUSD=X  | USD      | CURRENCY        | ccy_market | CCY      | CAD/USD
+CAD=X     | CAD      | CURRENCY        | ccy_market | CCY      | USD/CAD
+BTC-USD   | CAD      | CRYPTOCURRENCY  | ccc_market | CCC      | Bitcoin USD
 
 For each ticker there are several associated tables:
 
@@ -31,7 +35,7 @@ For each ticker there are several associated tables:
     
 Notes: data from yfinance package - ticker.ATTRIBUTE (e.g. msft.info) 
 
-Notes: ticker.info   - dict with ~40 to ~150 keys depending on ticker
+Notes: ticker.info   - dict with ~40 to ~150 keys depending on quoteType
 - ETFs don't have 'financialCurrency', 'country', 'sector', 'industry'
 - ETFs can have 'holdings' (list) and 'sectorWeightings' (list), but EQUITY generally won't
 
@@ -170,50 +174,72 @@ class DB:
             print('\tInitial download complete')
         assert ticker.info['symbol'] == ticker_str
         self.initialize_table_tickers()  # initialize table if it does not exist
+
+        # generate row info for one ticker
+        # - replace shortName with longName if it exists
+        if 'longName' in ticker.info.keys():
+            ticker_longname = ticker.info['longName']
+        else:
+            ticker_longname = ticker.info['shortName']
+        ticker_row = [ticker.info['symbol'],
+                      ticker.info['currency'],
+                      ticker.info['quoteType'],
+                      ticker.info['market'],
+                      ticker.info['exchange'],
+                      ticker_longname]
+
         with DBcursor() as cursor:
             # Make sure ticker_str not already in tickers table
             cursor.execute("SELECT symbol FROM tickers WHERE symbol=(?)",
                            (ticker_str,))
             assert cursor.fetchone() is None
             # Add row for ticker
-            cursor.execute("INSERT INTO tickers VALUES (?,?,?,?,?,?)",
-                           (ticker.info['symbol'],
-                            ticker.info['currency'],
-                            ticker.info['quoteType'],
-                            ticker.info['market'],
-                            ticker.info['exchange'],
-                            ticker.info['longName'])
-                           )
+            cursor.execute("INSERT INTO tickers VALUES (?,?,?,?,?,?)", (ticker_row))
             if verbose:
                 print('\tTicker row added to tickers table')
 
             # Add ticker specific tables (e.g. MSFT_days, MSFT_minutes)
             for timescale in ['minutes', 'days']:
-                if timescale == 'minutes':
-                    # can get intraday data up to 60d back, but can only pull 7d per download
-                    hist = ticker.history(period='7d', interval='1m', actions=False)
-                    hist.reset_index(inplace=True)
-                    hist['Datetime'] = hist['Datetime'].astype(str)
-                else:
-                    hist = ticker.history(period='max', interval='1d', actions=False)
-                    hist.reset_index(inplace=True)
-                    hist['Date'] = hist['Date'].astype(str)
 
                 tablename = '%s_%s' % (ticker_str, timescale)
                 # Create table header
                 cursor.execute("""CREATE TABLE '{}' (
-                    date TEXT,
-                    open REAL,
-                    high REAL,
-                    low REAL,
-                    close REAL,
-                    volume INTEGER
-                )""".format(tablename))
+                        date TEXT,
+                        open REAL,
+                        high REAL,
+                        low REAL,
+                        close REAL,
+                        volume INTEGER
+                    )""".format(tablename))
 
-                # Fill table using historical data
-                cursor.executemany("INSERT INTO '{}' values (?,?,?,?,?,?)".format(tablename),
-                                   (hist.values.tolist())
-                                   )
+                if timescale == 'days':
+                    hist = ticker.history(period='max', interval='1d', actions=False)
+                    hist.reset_index(inplace=True)
+                    hist['Date'] = hist['Date'].astype(str)
+
+                    # Fill table using historical data
+                    cursor.executemany("INSERT INTO '{}' values (?,?,?,?,?,?)".format(tablename),
+                                       (hist.values.tolist())
+                                       )
+
+                else:
+                    date_end = datetime.today()
+                    for idx in range(4):
+                        # TODO care for duplicate rows -- add interval, 1m, to start time?
+                        date_start = date_end - timedelta(days=6)
+                        # can get intraday data up to 30-60d back, but can only pull 7d per download
+                        hist = ticker.history(interval='1m', actions=False,
+                                              start=date_start, end=date_end)
+                        date_end = date_start
+                        hist.reset_index(inplace=True)
+                        hist['Datetime'] = hist['Datetime'].astype(str)
+
+                        # Fill table using historical data
+                        cursor.executemany("INSERT INTO '{}' values (?,?,?,?,?,?)".format(tablename),
+                                           (hist.values.tolist())
+                                           )
+
+
                 if verbose:
                     print('\tTicker-specific table %s created and filled' % tablename)
         return
