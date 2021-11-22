@@ -1,115 +1,113 @@
+import matplotlib.pyplot as plt
+import mplfinance as mpf
+import numpy as np
+import pandas as pd
 import sqlite3
+import time
 
-from db_settings import DB_PATH, DB_TABLE_PRIMARY
-
-
-def db_show_all():
-    connection = sqlite3.connect(DB_PATH)
-    cursor = connection.cursor()
-
-    cursor.execute("SELECT rowid, * FROM {}".format(DB_TABLE_PRIMARY))  # note can use table global
-    fulltable = cursor.fetchall()                                       # fetches whole table
-    for elem in fulltable:
-        print(elem)
-
-    connection.commit()
-    connection.close()
-    return
+from db_class import DBcursor
+from db_settings import MAP_COLUMN_TO_LABEL, DB_TZ
 
 
-def db_add_row(first_name, last_name, email):
-    connection = sqlite3.connect(DB_PATH)
-    cursor = connection.cursor()
-
-    cursor.execute("INSERT INTO yfinance VALUES (?,?,?)",
-                   (first_name, last_name, email))
-
-    connection.commit()
-    connection.close()
-    return
-
-
-def db_add_manyrows(rows):
-    # TODO what type of asserts on the structure of rows?
-
-    connection = sqlite3.connect(DB_PATH)
-    cursor = connection.cursor()
-
-    cursor.executemany("INSERT INTO yfinance VALUES (?,?,?)",
-                       rows)
-
-    connection.commit()
-    connection.close()
-    return
-
-
-def db_remove_row(column_name, row_value_to_delete):
+def read_history(ticker, interval='minutes', sorting=None, as_dataframe=True):
     """
     Args:
-        - column_name         - e.g. 'rowid'
-        - row_value_to_delete - e.g. '1'
-    Note:
-        - column name and row value need to be passed differently to execute
+    - sorting: if not None, must be a two-tuple of 'column_name', then 'ASC' or 'DESC'
+    - as_dataframe: if False, return list of lists instead of dataframe
+    Returns:
+         pandas dataframe or list of lists from cursor.fetchall()
     """
-    connection = sqlite3.connect(DB_PATH)
-    cursor = connection.cursor()
+    assert interval in ['days', 'minutes']
+    tablename = '"%s_%s"' % (ticker, interval)
+    cursor_exec = "SELECT * FROM %s" % tablename
+    if sorting is not None:
+        cursor_exec += ' ORDER BY %s %s' % (sorting[0], sorting[1])
 
-    # Option 1 (pass strings)
-    execute_str = "DELETE FROM yfinance WHERE %s = %s" % (column_name, row_value_to_delete)
-    cursor.execute(execute_str)
+    # args for pandas.to_datetime(...)
+    # https://pandas.pydata.org/pandas-docs/stable/reference/api/pandas.to_datetime.html
+    if interval == 'dates':
+        parse_dates = {}
+    else:
+        parse_dates = {'utc': True}
 
-    # Option 2 (pass strings)
-    #cursor.execute("DELETE FROM yfinance WHERE (%s) = (?)" % column_name,
-    #               row_value_to_delete)
+    if as_dataframe:
+        conn = sqlite3.connect(DBcursor().db_path)
+        out = pd.read_sql(cursor_exec, conn, index_col='date', parse_dates={'date': parse_dates})
+        if interval == 'minutes':
+            out.index = out.index.tz_convert(DB_TZ)
 
-    connection.commit()
-    connection.close()
+    else:
+        with DBcursor() as cursor:
+            cursor.execute(cursor_exec)
+            out = cursor.fetchall()
+
+    return out
+
+
+def plot_timeseries(ticker, column='close', interval='minutes'):
+    df = read_history(ticker, interval=interval, sorting=['date', 'ASC'])
+
+    title = '%s (%s) for interval: %s' % (ticker, column, interval)
+    ylabel = MAP_COLUMN_TO_LABEL[column]
+
+    plt.plot(np.arange(len(df)), df[column])
+    plt.title(title); plt.ylabel(ylabel)
+    plt.show()
+
+    df[column].plot()
+    plt.title(title); plt.ylabel(ylabel)
+    plt.show()
     return
 
 
-def db_reset():
-    connection = sqlite3.connect(DB_PATH)
-    cursor = connection.cursor()
+def plot_timeseries_fancy(ticker, style='yahoo', interval='minutes', vol=True, start=None, end=None):
+    """ Uses mplfinance package to make OHLC candle plot with volume subplot
+    If vol: plot volume subplot below primary plot
+    style options:
+        'binance', 'blueskies', 'brasil', 'charles', 'checkers',
+        'classic', 'default', 'mike', 'nightclouds', 'sas',
+        'starsandstripes', 'yahoo']
+    """
+    df = read_history(ticker, interval=interval, sorting=['date', 'ASC'])
 
-    cursor.execute("DROP TABLE yfinance")
+    # slicing df based on datetime intervals
+    if start is not None:
+        start = pd.to_datetime(start).tz_localize(DB_TZ)
+        assert start >= df.index.min()
+        df = df.loc[df.index > start]
+    if end is not None:
+        end = pd.to_datetime(end).tz_localize(DB_TZ)
+        assert end <= df.index.max()
+        df = df.loc[df.index < end]
 
-    connection.commit()
-    connection.close()
-    return
-
-
-def db_rebuild():
-    connection = sqlite3.connect(DB_PATH)
-    cursor = connection.cursor()
-
-    # Remove primary table
-    db_reset()
-
-    # Initialize primary table
-    cursor.execute("""CREATE TABLE yfinance (
-            first_name TEXT,
-            last_name TEXT,
-            email TEXT
-        )""")
-
-    # Fill primary table
-    db_add_row('John', 'Smith', 'js@js.com')
-    db_add_row('Mary', 'Smith', 'ms@ms.com')
-    db_add_row('Donald', 'Duck', 'duck@disney.com')
-
-    connection.commit()
-    connection.close()
+    kwargs = {'type': 'candle',
+              'style': style,
+              'volume': vol,
+              'title': '%s (interval: %s)' % (ticker, interval),
+              'ylabel': 'Price ($)',
+              'ylabel_lower': 'Volume',
+              'tz_localize': True}
+    if interval == 'days':
+        kwargs['mav'] = (50, 200)
+    if interval == 'minutes':
+        kwargs['mav'] = (15, 60)
+    mpf.plot(df, **kwargs)
     return
 
 
 if __name__ == '__main__':
-    db_rebuild()
+    ticker = 'CADUSD=X'  # 'MSFT', 'CADUSD=X', 'BTC-USD'
 
-    print('\nShow all:')
-    db_show_all()
+    # Timing a table query
+    stopwatch_start = time.time()
+    fetch = read_history(ticker, interval='minutes', sorting=['date', 'ASC'], as_dataframe=False)
+    print('Query took', time.time() - stopwatch_start, 'seconds')
 
-    print('\nRemove rowid #2')
-    db_remove_row('rowid', '2')
+    stopwatch_start = time.time()
+    fetch = read_history(ticker, interval='minutes', sorting=['date', 'ASC'], as_dataframe=True)
+    print('Query took', time.time() - stopwatch_start, 'seconds')
+    print(fetch.dtypes)
 
-    print('\nShow all:')
-    db_show_all()
+    plot_timeseries_fancy(ticker, interval='days')
+    plot_timeseries_fancy(ticker, interval='days', start='2016-09-01', end='2021-11-21')
+    plot_timeseries_fancy(ticker, interval='minutes', start='2021-11-16', end='2021-11-18')
