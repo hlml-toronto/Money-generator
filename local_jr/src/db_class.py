@@ -59,48 +59,75 @@ class FinanceDB():
     def add_security(self, ticker):
         if not isinstance(ticker, yf.ticker.Ticker): ticker = yf.Ticker(ticker)
         info = ticker.info
-        # sometimes some attributes are missing... need to deal with this, for
-        # now simply ignoring and resplacing
-        missing = ['sector','industry','employees','website','fullTimeEmployees','exchangeName','longName']
-        for key in missing:
-            if key not in info.keys():
-                info[key] = ''
-
+        empty_key = 'NULL'
         with DBCursor( self.db ) as cursor:
             # ticker info
-            print(info['symbol'], info['longName'], info['exchange'], info['currency'])
-            ticker_attr = ( info['symbol'], info['longName'], info['exchange'], info['currency'] )
-            cursor.execute('''INSERT IGNORE INTO security ( ticker, company, exchange, currency ) VALUES (?,?,?,?)''',
-                                    ticker_attr )
+            ticker_attr = ( info.get('symbol',empty_key), info.get('longName',empty_key),
+                            info.get('exchange',empty_key),
+                            info.get('financialCurrency',empty_key) )
+            cursor.execute('''INSERT OR REPLACE INTO security
+                                    ( ticker, company, exchange, currency )
+                                    VALUES (?,?,?,?)''', ticker_attr )
 
             # exchange info
-            exchange_attr = ( info['exchange'], info['exchangeName'], info['exchangeTimezoneShortName'] )
-            cursor.execute('''INSERT IGNORE INTO exchange ( acronym, name, time_zone ) VALUES (?,?,?)''',
-                                    exchange_attr)
+            exchange_attr = ( info.get('exchange',empty_key), info.get('exchangeName',empty_key),
+                                info.get('exchangeTimezoneShortName',empty_key) )
+            cursor.execute('''INSERT OR REPLACE INTO exchange
+                                    ( acronym, name, time_zone )
+                                    VALUES (?,?,?)''', exchange_attr)
 
             # company info
-            company_attr = ( info['longName'], info['sector'], info['industry'], info['country'], info['market'], info['fullTimeEmployees'], info['website'] )
-            cursor.execute('''INSERT IGNORE INTO company ( name, sector, industry, country, market, employees, website ) VALUES (?,?,?,?,?,?,?)''',
-                                    company_attr )
+            company_attr = ( info.get('longName',empty_key), info.get('sector',empty_key),
+                            info.get('industry',empty_key), info.get('country',empty_key),
+                            info.get('market',empty_key), info.get('fullTimeEmployees',empty_key),
+                            info.get('website',empty_key) )
+            cursor.execute('''INSERT OR REPLACE INTO company
+                ( name, sector, industry, country, market, employees, website )
+                VALUES (?,?,?,?,?,?,?)''', company_attr )
+
+            # ADD TABLE ABOUT STOCK ADJUSTMENT
 
     def add_security_price_daily(self, ticker, start=None, end=None):
 
         self.add_security(ticker)
 
         if start is None:
-            data = yf.download(ticker, period='max')
+            time_series = yf.download(ticker, period='max')#, threads=True) # ask CN why
         else:
-            data = yf.download(ticker, start=start, end=end)
+            times_series = yf.download(ticker, start=start, end=end)#, threads=True) # ask CN why
 
-        cursor.executemany('''INSERT IGNORE INTO security_price VALUES
-                                (?,?,?,?,?,?,?,?)
-                                ''',)
+        time_series.index = time_series.index.strftime("%Y-%m-%d")
 
-        #if ticker not in table: add it
+        time_series_tuples = time_series.to_records(index=True)
+
+        list_time_series = [(*tuple([ticker]),*record) for record in time_series_tuples]
+
+        with DBCursor( self.db ) as cursor:
+            cursor.executemany('''INSERT OR REPLACE INTO security_price VALUES
+                                    (?,?,?,?,?,?,?,?)''', list_time_series)
+
         return 0
 
-    def add_security_price_minutely(self, ticker):
-         return 0
+    def add_security_price_minutely(self, ticker, start=None, end=None):
+
+        self.add_security(ticker)
+
+        if start is None:
+            time_series = yf.download(ticker, period='1mo')#, threads=True) # ask CN why
+        else:
+            times_series = yf.download(ticker, start=start, end=end, interval='1m')#, threads=True)
+
+        time_series.index = time_series.index.strftime("%Y-%m-%d %H:%M:%S")
+
+        time_series_tuples = time_series.to_records(index=True)
+
+        list_time_series = [(*tuple([ticker]),*record) for record in time_series_tuples]
+
+        with DBCursor( self.db ) as cursor:
+            cursor.executemany('''INSERT OR REPLACE INTO security_price_intraday VALUES
+                                    (?,?,?,?,?,?,?,?)''', list(time_series_tuples))
+
+        return 0
 
     def execute(self, sql_command):
         with DBCursor( self.db ) as cursor:
