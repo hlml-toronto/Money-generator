@@ -238,10 +238,29 @@ class DB:
                         cursor.executemany("INSERT INTO '{}' values (?,?,?,?,?,?)".format(tablename),
                                            (hist.values.tolist())
                                            )
-
-
                 if verbose:
                     print('\tTicker-specific table %s created and filled' % tablename)
+
+            # Add ticker specific table for dividends and stock splits (e.g. MSFT_actions)
+            tablename = '%s_actions' % (ticker_str)
+            # Create table header
+            cursor.execute("""CREATE TABLE '{}' (
+                        date TEXT,
+                        dividend REAL,
+                        split REAL
+                    )""".format(tablename))
+
+            # Process actions data
+            actions = ticker.actions
+            actions.reset_index(inplace=True)
+            actions['Date'] = actions['Date'].astype(str)
+            # Fill table using historical data
+            cursor.executemany("INSERT INTO '{}' values (?,?,?)".format(tablename),
+                               (actions.values.tolist())
+                               )
+            if verbose:
+                print('\tTicker-specific table %s created and filled' % tablename)
+
         return
 
     def remove_ticker(self, ticker_str):
@@ -251,10 +270,10 @@ class DB:
             cursor.execute(execute_str,
                            (ticker_str,))
             # Remove associated ticker tables
-            drop_table_days = "DROP TABLE %s_days" % ticker_str
-            drop_table_minutes = "DROP TABLE %s_minutes" % ticker_str
-            cursor.execute(drop_table_days)
-            cursor.execute(drop_table_minutes)
+            tabletypes = ['days', 'minutes', 'actions']
+            for tabletype in tabletypes:
+                exec_str = "DROP TABLE %s_%s" % (ticker_str, tabletype)
+                cursor.execute(exec_str)
         return
 
 
