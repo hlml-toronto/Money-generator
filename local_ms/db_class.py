@@ -274,7 +274,7 @@ class DB:
             # Remove associated ticker tables
             tabletypes = ['days', 'minutes', 'actions']
             for tabletype in tabletypes:
-                exec_str = "DROP TABLE %s_%s" % (ticker_str, tabletype)
+                exec_str = "DROP TABLE '%s_%s'" % (ticker_str, tabletype)
                 cursor.execute(exec_str)
         return
 
@@ -289,7 +289,7 @@ if __name__ == '__main__':
     print('List of tickers:')
     db.get_tickers(verbose=True)
 
-    ticker_test = 'MSFT'
+    ticker_test = 'HUT.TO'
     print('\nRemoving a specific ticker:', ticker_test)
     db.remove_ticker(ticker_test)
 
