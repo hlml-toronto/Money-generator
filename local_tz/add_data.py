@@ -1,5 +1,6 @@
 import yfinance as yf
 import sqlite3
+import numpy as np 
 
 class DBCursor():
     """
@@ -110,7 +111,7 @@ def queryDatabase(tickername, from_time, to_time, resolution, value):
 
 		output = cursor.fetchall()
 
-	return output
+	return np.array(output)
 
 
 if __name__ == "__main__":
