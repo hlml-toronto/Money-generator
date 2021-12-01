@@ -96,7 +96,7 @@ def plot_timeseries_fancy(ticker, style='yahoo', interval='minutes', vol=True, s
 
 
 if __name__ == '__main__':
-    ticker = 'CADUSD=X'  # 'MSFT', 'CADUSD=X', 'BTC-USD'
+    ticker = 'MSFT'  # 'MSFT', 'CADUSD=X', 'BTC-USD'
 
     # Timing a table query
     stopwatch_start = time.time()

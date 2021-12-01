@@ -58,10 +58,11 @@ Attributes to consider adding
 
 
 class DBcursor:
-    """
-    Sample usage
-        with dbCursor() as cursor:
-            cursor.execute("SQL COMMAND")
+    """ Wrapper for starting the DB connection, initiating a cursor, commiting, and closing.
+
+    Sample usage:
+    with DBcursor() as cursor:
+        cursor.execute("SQL COMMAND")
     """
     def __init__(self):
         self.db_path = DB_PATH
@@ -69,6 +70,7 @@ class DBcursor:
     def __enter__(self):
         self.connection = sqlite3.connect(self.db_path)
         self.cursor = self.connection.cursor()
+        self.cursor.execute("PRAGMA foreign_keys = ON")
         return self.cursor
 
     def __exit__(self, exc_type, exc_value, traceback):
