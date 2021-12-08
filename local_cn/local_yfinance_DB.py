@@ -4,7 +4,7 @@ import datetime
 import pandas as pd
 from sqlite3 import Error
 
-DB_PATH = "chris_yfinance_testing.db"
+DB_PATH = "chris_yfinance_testing_exchange.db"
 
 class DBCursor:
     """
@@ -41,7 +41,8 @@ class SecuritiesDB:
             name TEXT,
             exchange TEXT,
             currency TEXT,
-            type TEXT
+            type TEXT,
+            FOREIGN KEY(exchange) REFERENCES exchange (exchange_name)
             ) 
             """
 
@@ -138,6 +139,13 @@ class SecuritiesDB:
             ticker_info = yf_ticker.info
             with DBCursor() as cursor:
 
+                # populate exchange table
+                exchange_attributes = (self.__pad_dict(ticker_info, 'exchange'),
+                                       self.__pad_dict(ticker_info, 'exchangeTimezoneName'),
+                                       self.__pad_dict(ticker_info, 'exchangeTimezoneShortName'))
+
+                cursor.execute("INSERT OR IGNORE INTO exchange VALUES (?,?,?)", exchange_attributes)
+
                 # populate security table
                 security_attributes = (symbol,
                                        self.__pad_dict(ticker_info, 'longName'),
@@ -146,13 +154,6 @@ class SecuritiesDB:
                                        self.__pad_dict(ticker_info, 'quoteType'))
 
                 cursor.execute("INSERT OR IGNORE INTO security VALUES (?,?,?,?,?)", security_attributes)
-
-                # populate exchange table
-                exchange_attributes = (self.__pad_dict(ticker_info, 'exchange'),
-                                       self.__pad_dict(ticker_info, 'exchangeTimezoneName'),
-                                       self.__pad_dict(ticker_info, 'exchangeTimezoneShortName'))
-
-                cursor.execute("INSERT OR IGNORE INTO exchange VALUES (?,?,?)", exchange_attributes)
 
                 # populate company table
                 company_attributes = (self.__pad_dict(ticker_info, 'longName'),
