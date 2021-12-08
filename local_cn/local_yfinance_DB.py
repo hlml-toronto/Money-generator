@@ -4,7 +4,7 @@ import datetime
 import pandas as pd
 from sqlite3 import Error
 
-DB_PATH = "chris_yfinance_testing_exchange.db"
+DB_PATH = "chris_yfinance_testing.db"
 
 class DBCursor:
     """
