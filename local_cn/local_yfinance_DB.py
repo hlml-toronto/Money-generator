@@ -38,10 +38,17 @@ class SecuritiesDB:
 
         security_table = """CREATE TABLE IF NOT EXISTS security (
             ticker TEXT PRIMARY KEY,
-            name TEXT,
+            name_short TEXT,
+            name_long TEXT,
             exchange TEXT,
             currency TEXT,
             type TEXT,
+            sector TEXT,
+            industry TEXT,
+            market TEXT,
+            hq_country TEXT,
+            employees INT,
+            website TEXT,
             FOREIGN KEY(exchange) REFERENCES exchange (exchange_name)
             ) 
             """
@@ -50,16 +57,6 @@ class SecuritiesDB:
             exchange_name TEXT PRIMARY KEY,
             exchange_timezone TEXT,
             exchange_timezone_short TEXT
-            )
-            """
-
-        company_table = """CREATE TABLE IF NOT EXISTS company (
-            company_name TEXT,
-            sector TEXT,
-            hq_country TEXT,
-            security_ticker TEXT,
-            CONSTRAINT company_key PRIMARY KEY (security_ticker, company_name),
-            FOREIGN KEY(security_ticker) REFERENCES security (ticker)
             )
             """
 
@@ -102,14 +99,14 @@ class SecuritiesDB:
             """
 
         # make empty tables
-        tables = [security_table, exchange_table, company_table,
+        tables = [security_table, exchange_table,
                   price_per_day, price_per_minute, actions_table]
 
         for table in tables:
             self.__create_table(table)
 
     def start_end_max_week_intervals(self, optional_start=(datetime.datetime.today() - datetime.timedelta(29))):
-        """Used to download any history (should be less than 30 days unsure...)
+        """Used to create date intervals when downloading any history (should be less than 30 days unsure...)
            in most efficient manner with interval less than 7d
         """
         intervals = []
@@ -148,20 +145,20 @@ class SecuritiesDB:
 
                 # populate security table
                 security_attributes = (symbol,
+                                       self.__pad_dict(ticker_info, 'shortName'),
                                        self.__pad_dict(ticker_info, 'longName'),
                                        self.__pad_dict(ticker_info, 'exchange'),
                                        self.__pad_dict(ticker_info, 'currency'),
-                                       self.__pad_dict(ticker_info, 'quoteType'))
+                                       self.__pad_dict(ticker_info, 'quoteType'),
+                                       self.__pad_dict(ticker_info, 'sector'),
+                                       self.__pad_dict(ticker_info, 'industry'),
+                                       self.__pad_dict(ticker_info, 'market'),
+                                       self.__pad_dict(ticker_info, 'country'),
+                                       self.__pad_dict(ticker_info, 'fullTimeEmployees'),
+                                       self.__pad_dict(ticker_info, 'website'))
 
-                cursor.execute("INSERT OR IGNORE INTO security VALUES (?,?,?,?,?)", security_attributes)
-
-                # populate company table
-                company_attributes = (self.__pad_dict(ticker_info, 'longName'),
-                                      self.__pad_dict(ticker_info, 'sector'),
-                                      self.__pad_dict(ticker_info, 'country'),
-                                      symbol)
-
-                cursor.execute("INSERT OR IGNORE INTO company VALUES (?,?,?,?)", company_attributes)
+                wildcards = ','.join(['?'] * 12)
+                cursor.execute("INSERT OR REPLACE INTO security VALUES (%s)" %wildcards, security_attributes)
 
                 # populate price_daily table
 
@@ -171,7 +168,6 @@ class SecuritiesDB:
 
                 time_series_formatted = time_series_daily.itertuples()
                 data = tuple(time_series_formatted)
-
                 wildcards = ','.join(['?'] * 8)
 
                 cursor.executemany("INSERT OR IGNORE INTO price_daily VALUES (%s)" % wildcards, data)
@@ -205,6 +201,7 @@ class SecuritiesDB:
                 wildcards = ','.join(['?'] * 4)
 
                 cursor.executemany("INSERT OR IGNORE INTO actions VALUES (%s)" % wildcards, data)
+                
             print(symbol, " data downloaded and populated in tables. ")
 
     def fetch_minutely_starting_at(self, ticker, start):
