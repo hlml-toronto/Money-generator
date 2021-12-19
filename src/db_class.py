@@ -49,7 +49,7 @@ class FinanceDB:
     """
 
     def __init__(self, db_filename):
-        self.dir = os.path.join(os.getcwd(), db_dir)
+        self.dir = os.path.join(os.path.normpath(os.getcwd() + os.sep + os.pardir), db_dir)
         self.db = os.path.join(self.dir, db_filename)
         if not os.path.isdir(self.dir):
             os.makedirs(self.dir)
@@ -191,10 +191,12 @@ class FinanceDB:
     def get_table(self, tablename):
 
         with DBCursor(self.db) as cursor:
-            cursor.execute("SELECT rowid,* FROM %s" % tablename)
+            cursor.execute("SELECT * FROM %s" % tablename)
             fulltable = cursor.fetchall()
+            cols = list(map(lambda x: x[0], cursor.description))
+            df = pd.DataFrame(fulltable, columns=cols)
 
-        return fulltable
+        return df
 
     def drop_all_tables(self):
 
