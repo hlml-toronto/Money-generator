@@ -49,36 +49,33 @@ class FinanceDB:
     """
 
     def __init__(self, db_filename):
-        self.dir = os.path.join(os.path.normpath(os.getcwd() + os.sep + os.pardir), DB_DIR)
-        self.db = os.path.join(self.dir, db_filename)
-        if not os.path.isdir(self.dir):
-            os.makedirs(self.dir)
+        #self.db_dir = os.path.join(os.path.normpath(os.getcwd() + os.sep + os.pardir), DB_DIR)
+        self.db_dir = DB_DIR
+        self.db_path = os.path.join(self.db_dir, db_filename)
+        if not os.path.isdir(self.db_dir):
+            os.makedirs(self.db_dir)
 
-        with DBCursor(self.db) as cursor:
+        with DBCursor(self.db_path) as cursor:
             for tables in DB_TABLES:
                 cursor.execute(f"CREATE TABLE IF NOT EXISTS {tables}")
 
     def add_default_tickers(self):
-
-        symbols = DB_TICKERS
-
-        for symbol in symbols:
+        for symbol in DB_TICKERS:
             self.add_ticker(symbol)
-
-        print("finished.")
+        print("Finished adding default tickers.")
 
     def add_ticker(self, symbol):
         yf_ticker = yf.Ticker(symbol)
         ticker_info = yf_ticker.info
 
-        with DBCursor(self.db) as cursor:
+        with DBCursor(self.db_path) as cursor:
 
             # populate exchange table
             exchange_attributes = (ticker_info.get('exchange', "NULL"),
                                    ticker_info.get('exchangeTimezoneName', "NULL"),
                                    ticker_info.get('exchangeTimezoneShortName', "NULL"))
             cursor.execute("PRAGMA table_info(exchange)")
-            wildcards = ','.join(['?'] * len( cursor.fetchall() ))
+            wildcards = ','.join(['?'] * len(cursor.fetchall()))
             cursor.execute("INSERT OR IGNORE INTO exchange VALUES (%s)" % wildcards, exchange_attributes)
 
             # populate security table
@@ -95,11 +92,10 @@ class FinanceDB:
                                    ticker_info.get('fullTimeEmployees', "NULL"),
                                    ticker_info.get('website', "NULL"))
             cursor.execute("PRAGMA table_info(security)")
-            wildcards = ','.join(['?'] * len( cursor.fetchall() ))
+            wildcards = ','.join(['?'] * len(cursor.fetchall()))
             cursor.execute("INSERT OR REPLACE INTO security VALUES (%s)" % wildcards, security_attributes)
 
             # populate price_daily table
-
             time_series_daily = yf.download(symbol, period='max', interval='1d', threads='true', progress=False)
             time_series_daily['security_ticker'] = [symbol] * len(time_series_daily.index)
             time_series_daily.index = time_series_daily.index.strftime("%Y-%m-%d %H:%M:%S")
@@ -108,14 +104,12 @@ class FinanceDB:
             daily_data = tuple(time_series_formatted)
 
             cursor.execute("PRAGMA table_info(price_daily)")
-            wildcards = ','.join(['?'] * len( cursor.fetchall() ))
+            wildcards = ','.join(['?'] * len(cursor.fetchall()))
             cursor.executemany("INSERT OR IGNORE INTO price_daily VALUES (%s)" % wildcards, daily_data)
 
             # populate price_minutely table
-
             date_intervals = self.minutely_data_download_intervals()
             for date in date_intervals:
-
                 time_series_minutely = yf.download(symbol, start=date[0], end=date[1], interval='1m',
                                                    threads='true', progress=False)
                 time_series_minutely['security_ticker'] = [symbol] * len(time_series_minutely.index)
@@ -125,11 +119,10 @@ class FinanceDB:
                 minutely_data = tuple(time_series_formatted)
 
                 cursor.execute("PRAGMA table_info(price_minutely)")
-                wildcards = ','.join(['?'] * len( cursor.fetchall() ))
+                wildcards = ','.join(['?'] * len(cursor.fetchall()))
                 cursor.executemany("INSERT OR IGNORE INTO price_minutely VALUES (%s)" % wildcards, minutely_data)
 
             # populate actions table
-
             actions = yf_ticker.actions
             actions['security_ticker'] = [symbol] * len(actions.index)
             actions.index = actions.index.strftime("%Y-%m-%d %H:%M:%S")
@@ -138,11 +131,10 @@ class FinanceDB:
             actions_data = tuple(actions_formatted)
 
             cursor.execute("PRAGMA table_info(actions)")
-            wildcards = ','.join(['?'] * len( cursor.fetchall() ))
+            wildcards = ','.join(['?'] * len(cursor.fetchall()))
             cursor.executemany("INSERT OR IGNORE INTO actions VALUES (%s)" % wildcards, actions_data)
 
-        print(symbol, "data downloaded and populated in tables.")
-
+        print(symbol, "add_ticker() data downloaded and populated in tables.")
 
     def minutely_data_download_intervals(self, optional_start=(datetime.datetime.today() - datetime.timedelta(29))):
         """Used to create date intervals when downloading any history (should be less than 30 days unsure...)
@@ -170,7 +162,77 @@ class FinanceDB:
 
         return intervals
 
-    def fetch_minutely_starting_at(self, ticker, start):
+    def __drop_all_tables(self):
+
+        with DBCursor(self.db_path) as cursor:
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
+            tables = cursor.fetchall()
+            for table in tables:
+                cursor.execute("DROP TABLE %s" % table[0])
+
+    def __create_table(self, create_table_sql):
+        with DBCursor(self.db_path) as cursor:
+            try:
+                cursor.execute(create_table_sql)
+            except Error as e:
+                print(e)
+
+    def dataframe_from_query(self, query):
+        with DBCursor(self.db_path) as cursor:
+            cursor.execute(query)
+            output = cursor.fetchall()
+            cols = list(map(lambda x: x[0], cursor.description))
+            df = pd.DataFrame(output, columns=cols)
+        return df
+
+    def get_table(self, tablename):
+        query = "SELECT * FROM %s" % tablename
+        df = self.dataframe_from_query(query)
+        return df
+
+    def get_daily_per_ticker(self, ticker):
+        query = "SELECT * FROM price_daily WHERE security_ticker='%s' ORDER BY date" % ticker
+        df = self.dataframe_from_query(query)
+        return df
+
+    def get_minutely_per_ticker(self, ticker):
+        query = "SELECT * FROM price_minutely WHERE security_ticker='%s' ORDER BY date" % ticker
+        df = self.dataframe_from_query(query)
+        return df
+
+    def get_actions_per_ticker(self, ticker):
+        query = "SELECT * FROM actions WHERE security_ticker='%s' ORDER BY date" % ticker
+        df = self.dataframe_from_query(query)
+        return df
+
+    def get_present_tickers(self):
+        with DBCursor(self.db_path) as cursor:
+            query = "SELECT ticker FROM security"
+            cursor.row_factory = lambda cursor, row: row[0]
+            cursor.execute(query)
+            output = cursor.fetchall()
+        # TODO compare vs the below code
+        #with DBcursor() as cursor:
+        #    cursor.execute("SELECT ticker FROM security")
+        #    output = [elem[0] for elem in cursor.fetchall()]
+        return output
+
+    def __TODO_actions_since_date(self, ticker, date):
+        yf_ticker = yf.Ticker(ticker)
+        actions = yf_ticker.actions
+        actions['security_ticker'] = [ticker] * len(actions.index)
+        actions.index = actions.index.strftime("%Y-%m-%d %H:%M:%S")
+        actions_formatted = actions.itertuples()
+        data = tuple(actions_formatted)
+
+        cols = ["date", "dividends", "stock_splits", "security_ticker"]
+        actions_df = pd.DataFrame(data, columns=cols)
+
+        actions_since = actions_df[actions_df["date"] > date.strftime("%Y-%m-%d")]
+
+        return actions_since
+
+    def __TODO_fetch_minutely_starting_at(self, ticker, start):
         # must be run within 29 days to maintain continuity with existing dataset
 
         assert start > datetime.datetime.today() - datetime.timedelta(29)
@@ -187,7 +249,7 @@ class FinanceDB:
 
             return data
 
-    def fetch_daily_between(self, ticker, start, end):
+    def __TODO_fetch_daily_between(self, ticker, start, end):
 
         time_series_daily = yf.download(ticker, start=start.strftime('%Y-%m-%d'), end=end.strftime('%Y-%m-%d'),
                                         interval='1d', threads='true', progress=False)
@@ -199,82 +261,7 @@ class FinanceDB:
 
         return data
 
-    def drop_all_tables(self):
-
-        with DBCursor(self.db) as cursor:
-            cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
-            tables = cursor.fetchall()
-            for table in tables:
-                cursor.execute("DROP TABLE %s" % table[0])
-
-    def __create_table(self, create_table_sql):
-
-        with DBCursor(self.db) as cursor:
-
-            try:
-                cursor.execute(create_table_sql)
-            except Error as e:
-                print(e)
-
-    def dataframe_from_query(self, query):
-        with DBCursor(self.db) as cursor:
-            cursor.execute(query)
-            output = cursor.fetchall()
-            cols = list(map(lambda x: x[0], cursor.description))
-            df = pd.DataFrame(output, columns=cols)
-
-            return df
-
-    def get_table(self, tablename):
-
-        query = "SELECT * FROM %s" % tablename
-        df = self.dataframe_from_query(query)
-        return df
-
-    def get_daily_per_ticker(self, ticker):
-
-        query = "SELECT * FROM price_daily WHERE security_ticker='%s' ORDER BY date" % ticker
-        df = self.dataframe_from_query(query)
-        return df
-
-    def get_minutely_per_ticker(self, ticker):
-
-        query = "SELECT * FROM price_minutely WHERE security_ticker='%s' ORDER BY date" % ticker
-        df = self.dataframe_from_query(query)
-        return df
-
-    def get_actions_per_ticker(self, ticker):
-
-        query = "SELECT * FROM actions WHERE security_ticker='%s' ORDER BY date" % ticker
-        df = self.dataframe_from_query(query)
-        return df
-
-    def get_present_tickers(self):
-
-        with DBCursor(self.db) as cursor:
-            query = "SELECT ticker FROM security"
-            cursor.row_factory = lambda cursor, row: row[0]
-            cursor.execute(query)
-            output = cursor.fetchall()
-        return output
-
-    def actions_since_date(self, ticker, date):
-
-        yf_ticker = yf.Ticker(ticker)
-        actions = yf_ticker.actions
-        actions['security_ticker'] = [ticker] * len(actions.index)
-        actions.index = actions.index.strftime("%Y-%m-%d %H:%M:%S")
-        actions_formatted = actions.itertuples()
-        data = tuple(actions_formatted)
-
-        cols = ["date", "dividends", "stock_splits", "security_ticker"]
-        actions_df = pd.DataFrame(data, columns=cols)
-
-        actions_since = actions_df[actions_df["date"] > date.strftime("%Y-%m-%d")]
-
-        return actions_since
-
-    def update(self):
+    def __TODO_update(self):
         """ Perform update of actions/daily-price/minutely-price and account for stock splits + dividends
             Work in progress
         """
@@ -288,16 +275,16 @@ class FinanceDB:
             latest_minutely = datetime.datetime.strptime(self.get_minutely_per_ticker(ticker)["date"].iloc[-1],
                                                          "%Y-%m-%d %H:%M:%S")
 
-            actions_since = self.actions_since_date(ticker, latest_daily)
+            actions_since = self.__TODO_actions_since_date(ticker, latest_daily)
 
             if actions_since.empty:
 
                 if today > latest_daily + datetime.timedelta(1):
 
                     # do daily updates
-                    daily_data = self.fetch_daily_between(ticker, latest_daily, today)
+                    daily_data = self.__TODO_fetch_daily_between(ticker, latest_daily, today)
 
-                    with DBCursor(self.db) as cursor:
+                    with DBCursor(self.db_path) as cursor:
                         cursor.execute("PRAGMA table_info(price_daily)")
                         wildcards = ','.join(['?'] * len( cursor.fetchall() ))
                         cursor.executemany("INSERT OR IGNORE INTO price_daily VALUES (%s)" % wildcards, daily_data)
@@ -305,9 +292,9 @@ class FinanceDB:
                     # do minutely updates
                     if today - datetime.timedelta(1) < latest_daily + datetime.timedelta(29):
 
-                        minutely_data = self.fetch_minutely_starting_at(ticker, today - datetime.timedelta(1))
+                        minutely_data = self.__TODO_fetch_minutely_starting_at(ticker, today - datetime.timedelta(1))
 
-                        with DBCursor(self.db) as cursor:
+                        with DBCursor(self.db_path) as cursor:
                             cursor.execute("PRAGMA table_info(price_minutely)")
                             wildcards = ','.join(['?'] * len( cursor.fetchall() ))
                             cursor.executemany("INSERT OR IGNORE INTO price_minutely VALUES (%s)" % wildcards,
