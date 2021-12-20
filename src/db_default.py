@@ -8,8 +8,8 @@ PROJECT_ROOT = os.path.dirname(SRC_DIR)                      # abspath root/
 sys.path.append(PROJECT_ROOT)
 
 # file io - specific file locations
-DB_DIR = PROJECT_ROOT + os.sep + 'financial_db'                   # db_path files are stored here
-DB_V1_PATH = DB_DIR + os.sep + 'default_finance_v1.db_path'       # intended as a 'frozen' database
+DB_DIR = PROJECT_ROOT + os.sep + 'financial_db'                  # db_path files are stored here
+DB_V1_PATH = DB_DIR + os.sep + 'default_finance_v1.db'           # intended as a 'frozen' database
 
 DB_TABLES = ['''security (
                     ticker TEXT PRIMARY KEY,
@@ -65,6 +65,15 @@ DB_TABLES = ['''security (
                     )'''
              ]
 
-DB_TICKERS = ['MSFT', 'AAPL', 'HUT', 'HUT.TO', 'SPY', 'CADUSD=X', 'BTC-USD', 'ETH-USD', 'ETHX-U.TO']
-
 DB_VIS_TZ = 'US/Eastern'
+
+# TODO implement with hashing: where to read/record the hash?
+# TODO e.g. have a db_generate.py which A) creates a variant if it does not exist B) checks hash otherwise
+DB_FROZEN_VARIANTS = {
+    'mixed_v1':
+        {'tickers': ['MSFT', 'AAPL', 'HUT', 'HUT.TO', 'SPY', 'CADUSD=X', 'BTC-USD', 'ETH-USD', 'ETHX-U.TO'],
+         'db_filename': 'default_mixed_v1.db',
+         'hash': 'TODO'}
+}
+
+DB_TICKERS = ['MSFT', 'AAPL', 'HUT', 'HUT.TO', 'SPY', 'CADUSD=X', 'BTC-USD', 'ETH-USD', 'ETHX-U.TO']
