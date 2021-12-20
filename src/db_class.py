@@ -133,7 +133,6 @@ class FinanceDB:
 
             actions_formatted = actions.itertuples()
             actions_data = tuple(actions_formatted)
-            print(actions_data)
 
             wildcards = ','.join(['?'] * 4)
 
