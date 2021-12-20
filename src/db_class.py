@@ -58,85 +58,89 @@ class FinanceDB:
             for tables in db_tables:
                 cursor.execute(f"CREATE TABLE IF NOT EXISTS {tables}")
 
-    def add_tickers(self):
+    def add_default_tickers(self):
 
         symbols = db_tickers
 
         for symbol in symbols:
-            yf_ticker = yf.Ticker(symbol)
-            ticker_info = yf_ticker.info
-
-            with DBCursor(self.db) as cursor:
-
-                # populate exchange table
-                exchange_attributes = (ticker_info.get('exchange', None),
-                                       ticker_info.get('exchangeTimezoneName', None),
-                                       ticker_info.get('exchangeTimezoneShortName', None))
-
-                cursor.execute("INSERT OR IGNORE INTO exchange VALUES (?,?,?)", exchange_attributes)
-
-                # populate security table
-                security_attributes = (symbol,
-                                       ticker_info.get('shortName', None),
-                                       ticker_info.get('longName', None),
-                                       ticker_info.get('exchange', None),
-                                       ticker_info.get('currency', None),
-                                       ticker_info.get('quoteType', None),
-                                       ticker_info.get('sector', None),
-                                       ticker_info.get('industry', None),
-                                       ticker_info.get('market', None),
-                                       ticker_info.get('country', None),
-                                       ticker_info.get('fullTimeEmployees', None),
-                                       ticker_info.get('website', None))
-
-                wildcards = ','.join(['?'] * 12)
-                cursor.execute("INSERT OR REPLACE INTO security VALUES (%s)" % wildcards, security_attributes)
-
-                # populate price_daily table
-
-                time_series_daily = yf.download(symbol, period='max', interval='1d', threads='true', progress=False)
-                time_series_daily['security_ticker'] = [symbol] * len(time_series_daily.index)
-                time_series_daily.index = time_series_daily.index.strftime("%Y-%m-%d %H:%M:%S")
-
-                time_series_formatted = time_series_daily.itertuples()
-                data = tuple(time_series_formatted)
-                wildcards = ','.join(['?'] * 8)
-
-                cursor.executemany("INSERT OR IGNORE INTO price_daily VALUES (%s)" % wildcards, data)
-
-                # populate price_minutely table
-
-                date_intervals = self.minutely_data_download_intervals()
-                for date in date_intervals:
-
-                    time_series_minutely = yf.download(symbol, start=date[0], end=date[1], interval='1m',
-                                                       threads='true', progress=False)
-                    time_series_minutely['security_ticker'] = [symbol] * len(time_series_minutely.index)
-                    time_series_minutely.index = time_series_minutely.index.strftime("%Y-%m-%d %H:%M:%S")
-
-                    time_series_formatted = time_series_minutely.itertuples()
-                    data = tuple(time_series_formatted)
-
-                    wildcards = ','.join(['?'] * 8)
-
-                    cursor.executemany("INSERT OR IGNORE INTO price_minutely VALUES (%s)" % wildcards, data)
-
-                # populate actions table
-
-                actions = yf_ticker.actions
-                actions['security_ticker'] = [symbol] * len(actions.index)
-                actions.index = actions.index.strftime("%Y-%m-%d %H:%M:%S")
-
-                actions_formatted = actions.itertuples()
-                data = tuple(actions_formatted)
-
-                wildcards = ','.join(['?'] * 4)
-
-                cursor.executemany("INSERT OR IGNORE INTO actions VALUES (%s)" % wildcards, data)
-
-            print(symbol, "data downloaded and populated in tables.")
+            self.add_ticker(symbol)
 
         print("finished.")
+
+    def add_ticker(self, symbol):
+        yf_ticker = yf.Ticker(symbol)
+        ticker_info = yf_ticker.info
+
+        with DBCursor(self.db) as cursor:
+
+            # populate exchange table
+            exchange_attributes = (ticker_info.get('exchange', None),
+                                   ticker_info.get('exchangeTimezoneName', None),
+                                   ticker_info.get('exchangeTimezoneShortName', None))
+
+            cursor.execute("INSERT OR IGNORE INTO exchange VALUES (?,?,?)", exchange_attributes)
+
+            # populate security table
+            security_attributes = (symbol,
+                                   ticker_info.get('shortName', None),
+                                   ticker_info.get('longName', None),
+                                   ticker_info.get('exchange', None),
+                                   ticker_info.get('currency', None),
+                                   ticker_info.get('quoteType', None),
+                                   ticker_info.get('sector', None),
+                                   ticker_info.get('industry', None),
+                                   ticker_info.get('market', None),
+                                   ticker_info.get('country', None),
+                                   ticker_info.get('fullTimeEmployees', None),
+                                   ticker_info.get('website', None))
+
+            wildcards = ','.join(['?'] * len(security_attributes))
+            cursor.execute("INSERT OR REPLACE INTO security VALUES (%s)" % wildcards, security_attributes)
+
+            # populate price_daily table
+
+            time_series_daily = yf.download(symbol, period='max', interval='1d', threads='true', progress=False)
+            time_series_daily['security_ticker'] = [symbol] * len(time_series_daily.index)
+            time_series_daily.index = time_series_daily.index.strftime("%Y-%m-%d %H:%M:%S")
+
+            time_series_formatted = time_series_daily.itertuples()
+            daily_data = tuple(time_series_formatted)
+            wildcards = ','.join(['?'] * len(daily_data))
+
+            cursor.executemany("INSERT OR IGNORE INTO price_daily VALUES (%s)" % wildcards, daily_data)
+
+            # populate price_minutely table
+
+            date_intervals = self.minutely_data_download_intervals()
+            for date in date_intervals:
+
+                time_series_minutely = yf.download(symbol, start=date[0], end=date[1], interval='1m',
+                                                   threads='true', progress=False)
+                time_series_minutely['security_ticker'] = [symbol] * len(time_series_minutely.index)
+                time_series_minutely.index = time_series_minutely.index.strftime("%Y-%m-%d %H:%M:%S")
+
+                time_series_formatted = time_series_minutely.itertuples()
+                minutely_data = tuple(time_series_formatted)
+
+                wildcards = ','.join(['?'] * len(minutely_data))
+
+                cursor.executemany("INSERT OR IGNORE INTO price_minutely VALUES (%s)" % wildcards, minutely_data)
+
+            # populate actions table
+
+            actions = yf_ticker.actions
+            actions['security_ticker'] = [symbol] * len(actions.index)
+            actions.index = actions.index.strftime("%Y-%m-%d %H:%M:%S")
+
+            actions_formatted = actions.itertuples()
+            actions_data = tuple(actions_formatted)
+
+            wildcards = ','.join(['?'] * len(actions_data))
+
+            cursor.executemany("INSERT OR IGNORE INTO actions VALUES (%s)" % wildcards, actions_data)
+
+        print(symbol, "data downloaded and populated in tables.")
+
 
     def minutely_data_download_intervals(self, optional_start=(datetime.datetime.today() - datetime.timedelta(29))):
         """Used to create date intervals when downloading any history (should be less than 30 days unsure...)
@@ -292,7 +296,7 @@ class FinanceDB:
                     daily_data = self.fetch_daily_between(ticker, latest_daily, today)
 
                     with DBCursor(self.db) as cursor:
-                        wildcards = ','.join(['?'] * 8)
+                        wildcards = ','.join(['?'] * len(daily_data))
                         cursor.executemany("INSERT OR IGNORE INTO price_daily VALUES (%s)" % wildcards, daily_data)
 
                     # do minutely updates
@@ -301,7 +305,7 @@ class FinanceDB:
                         minutely_data = self.fetch_minutely_starting_at(ticker, today - datetime.timedelta(1))
 
                         with DBCursor(self.db) as cursor:
-                            wildcards = ','.join(['?'] * 8)
+                            wildcards = ','.join(['?'] * len(minutely_data))
                             cursor.executemany("INSERT OR IGNORE INTO price_minutely VALUES (%s)" % wildcards,
                                                minutely_data)
 
