@@ -1,6 +1,5 @@
 import os
 
-
 DB_DIR = 'financial_db'
 DB_DEFAULT = DB_DIR + os.sep + 'default_finance_v1.db'
 
