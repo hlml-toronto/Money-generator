@@ -93,7 +93,6 @@ class FinanceDB:
                                    ticker_info.get('country', None),
                                    ticker_info.get('fullTimeEmployees', None),
                                    ticker_info.get('website', None))
-
             wildcards = ','.join(['?'] * len(security_attributes))
             cursor.execute("INSERT OR REPLACE INTO security VALUES (%s)" % wildcards, security_attributes)
 
@@ -105,7 +104,7 @@ class FinanceDB:
 
             time_series_formatted = time_series_daily.itertuples()
             daily_data = tuple(time_series_formatted)
-            wildcards = ','.join(['?'] * len(daily_data))
+            wildcards = ','.join(['?'] * len(daily_data[0]))
 
             cursor.executemany("INSERT OR IGNORE INTO price_daily VALUES (%s)" % wildcards, daily_data)
 
@@ -122,7 +121,7 @@ class FinanceDB:
                 time_series_formatted = time_series_minutely.itertuples()
                 minutely_data = tuple(time_series_formatted)
 
-                wildcards = ','.join(['?'] * len(minutely_data))
+                wildcards = ','.join(['?'] * len(minutely_data[0]))
 
                 cursor.executemany("INSERT OR IGNORE INTO price_minutely VALUES (%s)" % wildcards, minutely_data)
 
@@ -134,8 +133,9 @@ class FinanceDB:
 
             actions_formatted = actions.itertuples()
             actions_data = tuple(actions_formatted)
+            print(actions_data)
 
-            wildcards = ','.join(['?'] * len(actions_data))
+            wildcards = ','.join(['?'] * 4)
 
             cursor.executemany("INSERT OR IGNORE INTO actions VALUES (%s)" % wildcards, actions_data)
 
@@ -296,7 +296,7 @@ class FinanceDB:
                     daily_data = self.fetch_daily_between(ticker, latest_daily, today)
 
                     with DBCursor(self.db) as cursor:
-                        wildcards = ','.join(['?'] * len(daily_data))
+                        wildcards = ','.join(['?'] * 8)
                         cursor.executemany("INSERT OR IGNORE INTO price_daily VALUES (%s)" % wildcards, daily_data)
 
                     # do minutely updates
@@ -305,7 +305,7 @@ class FinanceDB:
                         minutely_data = self.fetch_minutely_starting_at(ticker, today - datetime.timedelta(1))
 
                         with DBCursor(self.db) as cursor:
-                            wildcards = ','.join(['?'] * len(minutely_data))
+                            wildcards = ','.join(['?'] * len(minutely_data[0]))
                             cursor.executemany("INSERT OR IGNORE INTO price_minutely VALUES (%s)" % wildcards,
                                                minutely_data)
 
