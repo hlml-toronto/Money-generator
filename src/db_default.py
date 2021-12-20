@@ -65,7 +65,7 @@ DB_TABLES = ['''security (
                     )'''
              ]
 
-DB_VIS_TZ = 'US/Eastern'
+DB_ASSUMED_TZ = 'US/Eastern'  # TODO currently used in visualize.py; assumed all database times are in US/Eastern
 
 # TODO implement with hashing: where to read/record the hash?
 # TODO e.g. have a db_generate.py which A) creates a variant if it does not exist B) checks hash otherwise

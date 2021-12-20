@@ -1,51 +1,14 @@
 import matplotlib.pyplot as plt
 import mplfinance as mpf
 import numpy as np
-import pandas
 import pandas as pd
-import sqlite3
-import time
+from datetime import datetime, timedelta
 
-from src.db_class import DBCursor
-from src.db_default import DB_VIS_TZ, DB_V1_PATH
-
-
-def read_history(ticker, interval='minutes', sorting=None, as_dataframe=True):
-    """
-    Args:
-    - sorting: if not None, must be a two-tuple of 'column_name', then 'ASC' or 'DESC'
-    - as_dataframe: if False, return list of lists instead of dataframe
-    Returns:
-         pandas dataframe or list of lists from cursor.fetchall()
-    """
-    assert interval in ['days', 'minutes']
-    tablename = '"%s_%s"' % (ticker, interval)
-    cursor_exec = "SELECT * FROM %s" % tablename
-    if sorting is not None:
-        cursor_exec += ' ORDER BY %s %s' % (sorting[0], sorting[1])
-
-    # args for pandas.to_datetime(...)
-    # https://pandas.pydata.org/pandas-docs/stable/reference/api/pandas.to_datetime.html
-    if interval == 'dates':
-        parse_dates = {}
-    else:
-        parse_dates = {'utc': True}
-
-    if as_dataframe:
-        conn = sqlite3.connect(DB_V1_PATH)
-        out = pd.read_sql(cursor_exec, conn, index_col='date', parse_dates={'date': parse_dates})
-        if interval == 'minutes':
-            out.index = out.index.tz_convert(DB_VIS_TZ)
-
-    else:
-        with DBCursor(DB_V1_PATH) as cursor:
-            cursor.execute(cursor_exec)
-            out = cursor.fetchall()
-
-    return out
+from src.db_class import FinanceDB
+from src.db_default import DB_ASSUMED_TZ, DB_V1_PATH
 
 
-def plot_timeseries(ticker, column='close', interval='minutes'):
+def plot_timeseries(df, ticker, column='close', interval='minutes'):
 
     MAP_COLUMN_TO_LABEL = {
         'open': 'Price (open)',
@@ -54,8 +17,6 @@ def plot_timeseries(ticker, column='close', interval='minutes'):
         'close': 'Price (close)',
         'volume': 'Volume (units)',
     }
-
-    df = read_history(ticker, interval=interval, sorting=['date', 'ASC'])
 
     title = '%s (%s) for interval: %s' % (ticker, column, interval)
     ylabel = MAP_COLUMN_TO_LABEL[column]
@@ -70,7 +31,7 @@ def plot_timeseries(ticker, column='close', interval='minutes'):
     return
 
 
-def plot_timeseries_fancy(ticker, style='yahoo', interval='minutes', vol=True, start=None, end=None):
+def plot_timeseries_fancy(df, ticker, style='yahoo', interval='minutes', vol=True, start=None, end=None):
     """ Uses mplfinance package to make OHLC candle plot with volume subplot
 
     ticker: is either a string (to a DB ticker) or a pandas DataFrame
@@ -83,20 +44,13 @@ def plot_timeseries_fancy(ticker, style='yahoo', interval='minutes', vol=True, s
         'classic', 'default', 'mike', 'nightclouds', 'sas',
         'starsandstripes', 'yahoo']
     """
-
-    if isinstance(ticker, str):
-        df = read_history(ticker, interval=interval, sorting=['date', 'ASC'])
-    else:
-        assert isinstance(ticker, pandas.DataFrame)
-        df = ticker
-
     # slicing df based on datetime intervals
     if start is not None:
-        start = pd.to_datetime(start).tz_localize(DB_VIS_TZ)
+        start = pd.to_datetime(start).tz_localize(DB_ASSUMED_TZ)
         assert start >= df.index.min()
         df = df.loc[df.index > start]
     if end is not None:
-        end = pd.to_datetime(end).tz_localize(DB_VIS_TZ)
+        end = pd.to_datetime(end).tz_localize(DB_ASSUMED_TZ)
         assert end <= df.index.max()
         df = df.loc[df.index < end]
 
@@ -115,21 +69,26 @@ def plot_timeseries_fancy(ticker, style='yahoo', interval='minutes', vol=True, s
     return
 
 
+def postprocess_db_timedata_per_ticker(df):
+    df.drop(columns=['adjusted_close', 'security_ticker'], inplace=True)
+    df.set_index(pd.DatetimeIndex(df['date']), inplace=True)
+    df.index = df.index.tz_localize(DB_ASSUMED_TZ)
+    return df
+
+
 if __name__ == '__main__':
-    ticker = 'AAPL'  # 'MSFT', 'CADUSD=X', 'BTC-USD'
 
-    print(DB_V1_PATH)
+    finance_db = FinanceDB(DB_V1_PATH)
+    ticker = 'AAPL'  # e.g. 'AAPL', 'MSFT', 'CADUSD=X', 'BTC-USD'
 
-    # Timing a table query
-    stopwatch_start = time.time()
-    fetch = read_history(ticker, interval='minutes', sorting=['date', 'ASC'], as_dataframe=False)
-    print('Query took', time.time() - stopwatch_start, 'seconds')
+    # plot daily data
+    df = finance_db.get_daily_per_ticker(ticker)
+    df = postprocess_db_timedata_per_ticker(df)
+    plot_timeseries_fancy(df, ticker, interval='days', start='2020-09-01', end='2021-11-21')
 
-    stopwatch_start = time.time()
-    fetch = read_history(ticker, interval='minutes', sorting=['date', 'ASC'], as_dataframe=True)
-    print('Query took', time.time() - stopwatch_start, 'seconds')
-    print(fetch.dtypes)
-
-    plot_timeseries_fancy(ticker, interval='days')
-    plot_timeseries_fancy(ticker, interval='days', start='2016-09-01', end='2021-11-21')
-    plot_timeseries_fancy(ticker, interval='minutes', start='2021-11-16', end='2021-11-18')
+    # plot minutely data data
+    df = finance_db.get_minutely_per_ticker(ticker)
+    df = postprocess_db_timedata_per_ticker(df)
+    minutely_start = datetime.today() - timedelta(days=20)
+    minutely_end = datetime.today() - timedelta(days=4)
+    plot_timeseries_fancy(df, ticker, interval='minutes', start=minutely_start, end=minutely_end)
