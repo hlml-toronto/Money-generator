@@ -1,6 +1,10 @@
-db_dir = 'financial_db'
+import os
 
-db_tables = ['''security (
+
+DB_DIR = 'financial_db'
+DB_DEFAULT = DB_DIR + os.sep + 'default_finance_v1.db'
+
+DB_TABLES = ['''security (
                     ticker TEXT PRIMARY KEY,
                     name_short TEXT,
                     name_long TEXT,
@@ -54,4 +58,6 @@ db_tables = ['''security (
                     )'''
              ]
 
-db_tickers = ['MSFT', 'AAPL', 'HUT', 'HUT.TO', 'SPY', 'CADUSD=X', 'BTC-USD', 'ETH-USD', 'ETHX-U.TO']
+DB_TICKERS = ['MSFT', 'AAPL', 'HUT', 'HUT.TO', 'SPY', 'CADUSD=X', 'BTC-USD', 'ETH-USD', 'ETHX-U.TO']
+
+DB_VIS_TZ = 'US/Eastern'

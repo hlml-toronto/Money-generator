@@ -5,7 +5,7 @@ import pandas as pd
 import os
 from pandas.tseries.offsets import BDay
 from sqlite3 import Error
-from src.db_default import db_tables, db_dir, db_tickers
+from src.db_default import DB_TABLES, DB_DIR, DB_TICKERS
 
 
 class DBCursor:
@@ -20,11 +20,11 @@ class DBCursor:
     automatically too.
     """
 
-    def __init__(self, db_filename):
-        self.db_filename = db_filename
+    def __init__(self, db_path):
+        self.db_path = db_path
 
     def __enter__(self):
-        self.connection = sqlite3.connect(self.db_filename)
+        self.connection = sqlite3.connect(self.db_path)
         self.connection.execute("PRAGMA foreign_keys = 1")
         self.cursor = self.connection.cursor()
         return self.cursor
@@ -45,22 +45,22 @@ class FinanceDB:
     code that interacts with it.
 
     Input
-        db_filename (str) : file where database is/will be saved.
+        db_path (str) : file where database is/will be saved.
     """
 
     def __init__(self, db_filename):
-        self.dir = os.path.join(os.path.normpath(os.getcwd() + os.sep + os.pardir), db_dir)
-        self.db = os.path.join(self.dir, db_filename)
-        if not os.path.isdir(self.dir):
-            os.makedirs(self.dir)
+        self.db_dir = os.path.join(os.path.normpath(os.getcwd() + os.sep + os.pardir), DB_DIR)
+        self.db_path = os.path.join(self.db_dir, db_filename)
+        if not os.path.isdir(self.db_dir):
+            os.makedirs(self.db_dir)
 
-        with DBCursor(self.db) as cursor:
-            for tables in db_tables:
+        with DBCursor(self.db_path) as cursor:
+            for tables in DB_TABLES:
                 cursor.execute(f"CREATE TABLE IF NOT EXISTS {tables}")
 
     def add_default_tickers(self):
 
-        symbols = db_tickers
+        symbols = DB_TICKERS
 
         for symbol in symbols:
             self.add_ticker(symbol)
@@ -71,7 +71,7 @@ class FinanceDB:
         yf_ticker = yf.Ticker(symbol)
         ticker_info = yf_ticker.info
 
-        with DBCursor(self.db) as cursor:
+        with DBCursor(self.db_path) as cursor:
 
             # populate exchange table
             exchange_attributes = (ticker_info.get('exchange', None),
@@ -198,7 +198,7 @@ class FinanceDB:
 
     def drop_all_tables(self):
 
-        with DBCursor(self.db) as cursor:
+        with DBCursor(self.db_path) as cursor:
             cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
             tables = cursor.fetchall()
             for table in tables:
@@ -206,7 +206,7 @@ class FinanceDB:
 
     def __create_table(self, create_table_sql):
 
-        with DBCursor(self.db) as cursor:
+        with DBCursor(self.db_path) as cursor:
 
             try:
                 cursor.execute(create_table_sql)
@@ -214,7 +214,7 @@ class FinanceDB:
                 print(e)
 
     def dataframe_from_query(self, query):
-        with DBCursor(self.db) as cursor:
+        with DBCursor(self.db_path) as cursor:
             cursor.execute(query)
             output = cursor.fetchall()
             cols = list(map(lambda x: x[0], cursor.description))
@@ -248,7 +248,7 @@ class FinanceDB:
 
     def get_present_tickers(self):
 
-        with DBCursor(self.db) as cursor:
+        with DBCursor(self.db_path) as cursor:
             query = "SELECT ticker FROM security"
             cursor.row_factory = lambda cursor, row: row[0]
             cursor.execute(query)
@@ -294,7 +294,7 @@ class FinanceDB:
                     # do daily updates
                     daily_data = self.fetch_daily_between(ticker, latest_daily, today)
 
-                    with DBCursor(self.db) as cursor:
+                    with DBCursor(self.db_path) as cursor:
                         wildcards = ','.join(['?'] * 8)
                         cursor.executemany("INSERT OR IGNORE INTO price_daily VALUES (%s)" % wildcards, daily_data)
 
@@ -303,7 +303,7 @@ class FinanceDB:
 
                         minutely_data = self.fetch_minutely_starting_at(ticker, today - datetime.timedelta(1))
 
-                        with DBCursor(self.db) as cursor:
+                        with DBCursor(self.db_path) as cursor:
                             wildcards = ','.join(['?'] * len(minutely_data[0]))
                             cursor.executemany("INSERT OR IGNORE INTO price_minutely VALUES (%s)" % wildcards,
                                                minutely_data)
