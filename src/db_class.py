@@ -2,8 +2,9 @@ import yfinance as yf
 import sqlite3
 import datetime
 import pandas as pd
-from sqlite3 import Error
 import os
+from pandas.tseries.offsets import BDay
+from sqlite3 import Error
 from src.db_default import db_tables, db_dir, db_tickers
 
 
@@ -21,7 +22,6 @@ class DBCursor:
 
     def __init__(self, db_filename):
         self.db_filename = db_filename
-        return None
 
     def __enter__(self):
         self.connection = sqlite3.connect(self.db_filename)
@@ -61,6 +61,7 @@ class FinanceDB:
     def add_tickers(self):
 
         symbols = db_tickers
+
         for symbol in symbols:
             yf_ticker = yf.Ticker(symbol)
             ticker_info = yf_ticker.info
@@ -68,25 +69,25 @@ class FinanceDB:
             with DBCursor(self.db) as cursor:
 
                 # populate exchange table
-                exchange_attributes = (self.__pad_dict(ticker_info, 'exchange'),
-                                       self.__pad_dict(ticker_info, 'exchangeTimezoneName'),
-                                       self.__pad_dict(ticker_info, 'exchangeTimezoneShortName'))
+                exchange_attributes = (ticker_info.get('exchange', None),
+                                       ticker_info.get('exchangeTimezoneName', None),
+                                       ticker_info.get('exchangeTimezoneShortName', None))
 
                 cursor.execute("INSERT OR IGNORE INTO exchange VALUES (?,?,?)", exchange_attributes)
 
                 # populate security table
                 security_attributes = (symbol,
-                                       self.__pad_dict(ticker_info, 'shortName'),
-                                       self.__pad_dict(ticker_info, 'longName'),
-                                       self.__pad_dict(ticker_info, 'exchange'),
-                                       self.__pad_dict(ticker_info, 'currency'),
-                                       self.__pad_dict(ticker_info, 'quoteType'),
-                                       self.__pad_dict(ticker_info, 'sector'),
-                                       self.__pad_dict(ticker_info, 'industry'),
-                                       self.__pad_dict(ticker_info, 'market'),
-                                       self.__pad_dict(ticker_info, 'country'),
-                                       self.__pad_dict(ticker_info, 'fullTimeEmployees'),
-                                       self.__pad_dict(ticker_info, 'website'))
+                                       ticker_info.get('shortName', None),
+                                       ticker_info.get('longName', None),
+                                       ticker_info.get('exchange', None),
+                                       ticker_info.get('currency', None),
+                                       ticker_info.get('quoteType', None),
+                                       ticker_info.get('sector', None),
+                                       ticker_info.get('industry', None),
+                                       ticker_info.get('market', None),
+                                       ticker_info.get('country', None),
+                                       ticker_info.get('fullTimeEmployees', None),
+                                       ticker_info.get('website', None))
 
                 wildcards = ','.join(['?'] * 12)
                 cursor.execute("INSERT OR REPLACE INTO security VALUES (%s)" % wildcards, security_attributes)
@@ -105,9 +106,9 @@ class FinanceDB:
 
                 # populate price_minutely table
 
-                date_intervals = self.start_end_max_week_intervals()
-
+                date_intervals = self.minutely_data_download_intervals()
                 for date in date_intervals:
+
                     time_series_minutely = yf.download(symbol, start=date[0], end=date[1], interval='1m',
                                                        threads='true', progress=False)
                     time_series_minutely['security_ticker'] = [symbol] * len(time_series_minutely.index)
@@ -133,9 +134,11 @@ class FinanceDB:
 
                 cursor.executemany("INSERT OR IGNORE INTO actions VALUES (%s)" % wildcards, data)
 
-            print(symbol, " data downloaded and populated in tables. ")
+            print(symbol, "data downloaded and populated in tables.")
 
-    def start_end_max_week_intervals(self, optional_start=(datetime.datetime.today() - datetime.timedelta(29))):
+        print("finished.")
+
+    def minutely_data_download_intervals(self, optional_start=(datetime.datetime.today() - datetime.timedelta(29))):
         """Used to create date intervals when downloading any history (should be less than 30 days unsure...)
            in most efficient manner with interval less than 7d
         """
@@ -153,9 +156,11 @@ class FinanceDB:
             intervals.append([start.strftime('%Y-%m-%d'), end.strftime('%Y-%m-%d')])
 
         if end + datetime.timedelta(1) < today:
-            start = end + datetime.timedelta(1)
-            end = today
-            intervals.append([start.strftime('%Y-%m-%d'), end.strftime('%Y-%m-%d')])
+            start = end + datetime.timedelta(1) - BDay(1)
+            end = today - BDay(1)
+
+            if start.strftime('%Y-%m-%d') != end.strftime('%Y-%m-%d'):
+                intervals.append([start.strftime('%Y-%m-%d'), end.strftime('%Y-%m-%d')])
 
         return intervals
 
@@ -163,7 +168,7 @@ class FinanceDB:
         # must be run within 29 days to maintain continuity with existing dataset
 
         assert start > datetime.datetime.today() - datetime.timedelta(29)
-        date_intervals = self.start_end_max_week_intervals(start)
+        date_intervals = self.minutely_data_download_intervals(start)
 
         for date in date_intervals:
             time_series_minutely = yf.download(ticker, start=date[0], end=date[1], interval='1m', threads='true',
@@ -188,16 +193,6 @@ class FinanceDB:
 
         return data
 
-    def get_table(self, tablename):
-
-        with DBCursor(self.db) as cursor:
-            cursor.execute("SELECT * FROM %s" % tablename)
-            fulltable = cursor.fetchall()
-            cols = list(map(lambda x: x[0], cursor.description))
-            df = pd.DataFrame(fulltable, columns=cols)
-
-        return df
-
     def drop_all_tables(self):
 
         with DBCursor(self.db) as cursor:
@@ -215,45 +210,38 @@ class FinanceDB:
             except Error as e:
                 print(e)
 
-    def __pad_dict(self, ticker_dict, key):
+    def dataframe_from_query(self, query):
+        with DBCursor(self.db) as cursor:
+            cursor.execute(query)
+            output = cursor.fetchall()
+            cols = list(map(lambda x: x[0], cursor.description))
+            df = pd.DataFrame(output, columns=cols)
 
-        if key not in ticker_dict.keys():
-            return None
-        else:
-            return ticker_dict[key]
+            return df
+
+    def get_table(self, tablename):
+
+        query = "SELECT * FROM %s" % tablename
+        df = self.dataframe_from_query(query)
+        return df
 
     def get_daily_per_ticker(self, ticker):
 
-        with DBCursor(self.db) as cursor:
-            query = "SELECT * FROM price_daily WHERE security_ticker=? ORDER BY date"
-            cursor.execute(query, (ticker,))
-            output = cursor.fetchall()
-            cols = ["date", "open", "high", "low", "close", "adjusted_close", "volume", "security_ticker"]
-            df = pd.DataFrame(output, columns=cols)
-
-            return df
+        query = "SELECT * FROM price_daily WHERE security_ticker='%s' ORDER BY date" % ticker
+        df = self.dataframe_from_query(query)
+        return df
 
     def get_minutely_per_ticker(self, ticker):
 
-        with DBCursor(self.db) as cursor:
-            query = "SELECT * FROM price_minutely WHERE security_ticker=? ORDER BY date"
-            cursor.execute(query, (ticker,))
-            output = cursor.fetchall()
-            cols = ["date", "open", "high", "low", "close", "adjusted_close", "volume", "security_ticker"]
-            df = pd.DataFrame(output, columns=cols)
-
-            return df
+        query = "SELECT * FROM price_minutely WHERE security_ticker='%s' ORDER BY date" % ticker
+        df = self.dataframe_from_query(query)
+        return df
 
     def get_actions_per_ticker(self, ticker):
 
-        with DBCursor(self.db) as cursor:
-            query = "SELECT * FROM actions WHERE security_ticker=? ORDER BY date"
-            cursor.execute(query, (ticker,))
-            output = cursor.fetchall()
-            cols = ["date", "dividends", "stock_splits", "security_ticker"]
-            df = pd.DataFrame(output, columns=cols)
-
-            return df
+        query = "SELECT * FROM actions WHERE security_ticker='%s' ORDER BY date" % ticker
+        df = self.dataframe_from_query(query)
+        return df
 
     def get_present_tickers(self):
 
@@ -281,9 +269,9 @@ class FinanceDB:
         return actions_since
 
     def update(self):
-        ''' Perform update of actions/daily-price/minutely-price and account for stock splits + dividends
+        """ Perform update of actions/daily-price/minutely-price and account for stock splits + dividends
             Work in progress
-        '''
+        """
 
         tickers_present = self.get_present_tickers()
         today = datetime.datetime.today()
@@ -323,4 +311,4 @@ class FinanceDB:
                 else:
                     print(ticker, " data already up to date.")
 
-            # TODO: else (create multiplcation sequence to do serial dividend/split updates)
+            # TODO: else (create multiplication sequence to do serial dividend/split updates)
