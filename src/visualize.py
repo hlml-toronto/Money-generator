@@ -7,7 +7,7 @@ import sqlite3
 import time
 
 from src.db_class import DBCursor
-from src.db_default import DB_VIS_TZ, DB_DEFAULT
+from src.db_default import DB_VIS_TZ, DB_V1_PATH
 
 
 def read_history(ticker, interval='minutes', sorting=None, as_dataframe=True):
@@ -32,13 +32,13 @@ def read_history(ticker, interval='minutes', sorting=None, as_dataframe=True):
         parse_dates = {'utc': True}
 
     if as_dataframe:
-        conn = sqlite3.connect(DB_DEFAULT)
+        conn = sqlite3.connect(DB_V1_PATH)
         out = pd.read_sql(cursor_exec, conn, index_col='date', parse_dates={'date': parse_dates})
         if interval == 'minutes':
             out.index = out.index.tz_convert(DB_VIS_TZ)
 
     else:
-        with DBCursor(DB_DEFAULT) as cursor:
+        with DBCursor(DB_V1_PATH) as cursor:
             cursor.execute(cursor_exec)
             out = cursor.fetchall()
 
@@ -117,6 +117,8 @@ def plot_timeseries_fancy(ticker, style='yahoo', interval='minutes', vol=True, s
 
 if __name__ == '__main__':
     ticker = 'AAPL'  # 'MSFT', 'CADUSD=X', 'BTC-USD'
+
+    print(DB_V1_PATH)
 
     # Timing a table query
     stopwatch_start = time.time()
