@@ -49,7 +49,6 @@ class FinanceDB:
     """
 
     def __init__(self, db_filename):
-        #self.db_dir = os.path.join(os.path.normpath(os.getcwd() + os.sep + os.pardir), DB_DIR)
         self.db_dir = DB_DIR
         self.db_path = os.path.join(self.db_dir, db_filename)
         if not os.path.isdir(self.db_dir):
@@ -67,9 +66,7 @@ class FinanceDB:
     def add_ticker(self, symbol):
         yf_ticker = yf.Ticker(symbol)
         ticker_info = yf_ticker.info
-
         with DBCursor(self.db_path) as cursor:
-
             # populate exchange table
             exchange_attributes = (ticker_info.get('exchange', "NULL"),
                                    ticker_info.get('exchangeTimezoneName', "NULL"),
@@ -97,12 +94,8 @@ class FinanceDB:
 
             # populate price_daily table
             time_series_daily = yf.download(symbol, period='max', interval='1d', threads='true', progress=False)
-            time_series_daily['security_ticker'] = [symbol] * len(time_series_daily.index)
-            time_series_daily.index = time_series_daily.index.strftime("%Y-%m-%d %H:%M:%S")
-
-            time_series_formatted = time_series_daily.itertuples()
-            daily_data = tuple(time_series_formatted)
-
+            daily_data = self.yfinance_timeseries_to_tuple(symbol, 'security_ticker', time_series_daily)
+            print(daily_data)
             cursor.execute("PRAGMA table_info(price_daily)")
             wildcards = ','.join(['?'] * len(cursor.fetchall()))
             cursor.executemany("INSERT OR IGNORE INTO price_daily VALUES (%s)" % wildcards, daily_data)
@@ -112,33 +105,34 @@ class FinanceDB:
             for date in date_intervals:
                 time_series_minutely = yf.download(symbol, start=date[0], end=date[1], interval='1m',
                                                    threads='true', progress=False)
-                time_series_minutely['security_ticker'] = [symbol] * len(time_series_minutely.index)
-                time_series_minutely.index = time_series_minutely.index.strftime("%Y-%m-%d %H:%M:%S")
-
-                time_series_formatted = time_series_minutely.itertuples()
-                minutely_data = tuple(time_series_formatted)
-
+                minutely_data = self.yfinance_timeseries_to_tuple(symbol, 'security_ticker', time_series_minutely)
                 cursor.execute("PRAGMA table_info(price_minutely)")
                 wildcards = ','.join(['?'] * len(cursor.fetchall()))
                 cursor.executemany("INSERT OR IGNORE INTO price_minutely VALUES (%s)" % wildcards, minutely_data)
 
             # populate actions table
             actions = yf_ticker.actions
-            actions['security_ticker'] = [symbol] * len(actions.index)
-            actions.index = actions.index.strftime("%Y-%m-%d %H:%M:%S")
-
-            actions_formatted = actions.itertuples()
-            actions_data = tuple(actions_formatted)
-
+            actions_data = self.yfinance_timeseries_to_tuple(symbol, 'security_ticker', actions)
             cursor.execute("PRAGMA table_info(actions)")
             wildcards = ','.join(['?'] * len(cursor.fetchall()))
             cursor.executemany("INSERT OR IGNORE INTO actions VALUES (%s)" % wildcards, actions_data)
 
         print(symbol, "add_ticker() data downloaded and populated in tables.")
 
+    def yfinance_timeseries_to_tuple(self, ticker, column_name, timeseries_df):
+        """
+        used to convert yfinance timeseries data (pandas dataframe) to tuple of tuples
+        """
+        timeseries_df[column_name] = [ticker] * len(timeseries_df.index)
+        timeseries_df.index = timeseries_df.index.strftime("%Y-%m-%d %H:%M:%S")
+        timeseries_df_formatted = timeseries_df.itertuples()
+        output = tuple(timeseries_df_formatted)
+
+        return output
+
     def minutely_data_download_intervals(self, optional_start=(datetime.datetime.today() - datetime.timedelta(29))):
-        """Used to create date intervals when downloading any history (should be less than 30 days unsure...)
-           in most efficient manner with interval less than 7d
+        """Used to create date intervals when downloading minutely data
+           in most efficient manner with interval less than 7d and total span < 29 days
         """
         intervals = []
         today = datetime.datetime.today()
@@ -163,7 +157,6 @@ class FinanceDB:
         return intervals
 
     def __drop_all_tables(self):
-
         with DBCursor(self.db_path) as cursor:
             cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
             tables = cursor.fetchall()
@@ -208,26 +201,16 @@ class FinanceDB:
     def get_present_tickers(self):
         with DBCursor(self.db_path) as cursor:
             query = "SELECT ticker FROM security"
-            cursor.row_factory = lambda cursor, row: row[0]
             cursor.execute(query)
-            output = cursor.fetchall()
-        # TODO compare vs the below code
-        #with DBcursor() as cursor:
-        #    cursor.execute("SELECT ticker FROM security")
-        #    output = [elem[0] for elem in cursor.fetchall()]
+            output = [elem[0] for elem in cursor.fetchall()]
         return output
 
     def __TODO_actions_since_date(self, ticker, date):
         yf_ticker = yf.Ticker(ticker)
         actions = yf_ticker.actions
-        actions['security_ticker'] = [ticker] * len(actions.index)
-        actions.index = actions.index.strftime("%Y-%m-%d %H:%M:%S")
-        actions_formatted = actions.itertuples()
-        data = tuple(actions_formatted)
-
+        data = self.yfinance_timeseries_to_tuple(ticker, 'security_ticker', actions)
         cols = ["date", "dividends", "stock_splits", "security_ticker"]
         actions_df = pd.DataFrame(data, columns=cols)
-
         actions_since = actions_df[actions_df["date"] > date.strftime("%Y-%m-%d")]
 
         return actions_since
@@ -241,11 +224,7 @@ class FinanceDB:
         for date in date_intervals:
             time_series_minutely = yf.download(ticker, start=date[0], end=date[1], interval='1m', threads='true',
                                                progress=False)
-            time_series_minutely['security_ticker'] = [ticker] * len(time_series_minutely.index)
-            time_series_minutely.index = time_series_minutely.index.strftime("%Y-%m-%d %H:%M:%S")
-
-            time_series_formatted = time_series_minutely.itertuples()
-            data = tuple(time_series_formatted)
+            data = self.yfinance_timeseries_to_tuple(ticker, 'security_ticker', time_series_minutely)
 
             return data
 
@@ -253,12 +232,7 @@ class FinanceDB:
 
         time_series_daily = yf.download(ticker, start=start.strftime('%Y-%m-%d'), end=end.strftime('%Y-%m-%d'),
                                         interval='1d', threads='true', progress=False)
-        time_series_daily['security_ticker'] = [ticker] * len(time_series_daily.index)
-        time_series_daily.index = time_series_daily.index.strftime("%Y-%m-%d %H:%M:%S")
-
-        time_series_formatted = time_series_daily.itertuples()
-        data = tuple(time_series_formatted)
-
+        data = self.yfinance_timeseries_to_tuple(ticker, 'security_ticker', time_series_daily)
         return data
 
     def __TODO_update(self):
@@ -286,7 +260,7 @@ class FinanceDB:
 
                     with DBCursor(self.db_path) as cursor:
                         cursor.execute("PRAGMA table_info(price_daily)")
-                        wildcards = ','.join(['?'] * len( cursor.fetchall() ))
+                        wildcards = ','.join(['?'] * len(cursor.fetchall()))
                         cursor.executemany("INSERT OR IGNORE INTO price_daily VALUES (%s)" % wildcards, daily_data)
 
                     # do minutely updates
@@ -296,7 +270,7 @@ class FinanceDB:
 
                         with DBCursor(self.db_path) as cursor:
                             cursor.execute("PRAGMA table_info(price_minutely)")
-                            wildcards = ','.join(['?'] * len( cursor.fetchall() ))
+                            wildcards = ','.join(['?'] * len(cursor.fetchall()))
                             cursor.executemany("INSERT OR IGNORE INTO price_minutely VALUES (%s)" % wildcards,
                                                minutely_data)
 
