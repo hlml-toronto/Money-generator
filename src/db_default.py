@@ -8,7 +8,6 @@ sys.path.append(PROJECT_ROOT)
 
 # file io - specific file locations
 DB_DIR = PROJECT_ROOT + os.sep + 'financial_db'  # db_path files are stored here
-DB_V1_PATH = DB_DIR + os.sep + 'default_finance_v1.db'  # intended as a 'frozen' database
 
 DB_TABLES = ['''security (
                     ticker TEXT PRIMARY KEY,
