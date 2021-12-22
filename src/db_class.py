@@ -3,9 +3,10 @@ import sqlite3
 import datetime
 import pandas as pd
 import os
+import hashlib
 from pandas.tseries.offsets import BDay
 from sqlite3 import Error
-from src.db_default import DB_TABLES, DB_DIR, DB_TICKERS
+from src.db_default import DB_TABLES, DB_DIR, DB_DEFAULT_TICKERS, DB_FROZEN_VARIANTS
 
 
 class DBCursor:
@@ -51,6 +52,7 @@ class FinanceDB:
     def __init__(self, db_filename):
         self.db_dir = DB_DIR
         self.db_path = os.path.join(self.db_dir, db_filename)
+        self.valid_frozen_db(db_filename)
         if not os.path.isdir(self.db_dir):
             os.makedirs(self.db_dir)
 
@@ -59,7 +61,7 @@ class FinanceDB:
                 cursor.execute(f"CREATE TABLE IF NOT EXISTS {tables}")
 
     def add_default_tickers(self):
-        for symbol in DB_TICKERS:
+        for symbol in DB_DEFAULT_TICKERS:
             self.add_ticker(symbol)
         print("Finished adding default tickers.")
 
@@ -93,9 +95,8 @@ class FinanceDB:
             cursor.execute("INSERT OR REPLACE INTO security VALUES (%s)" % wildcards, security_attributes)
 
             # populate price_daily table
-            time_series_daily = yf.download(symbol, period='max', interval='1d', threads='true', progress=False)
+            time_series_daily = yf.download(symbol, period='max', interval='1d', threads='False', progress=False)
             daily_data = self.yfinance_timeseries_to_tuple(symbol, 'security_ticker', time_series_daily)
-            print(daily_data)
             cursor.execute("PRAGMA table_info(price_daily)")
             wildcards = ','.join(['?'] * len(cursor.fetchall()))
             cursor.executemany("INSERT OR IGNORE INTO price_daily VALUES (%s)" % wildcards, daily_data)
@@ -104,7 +105,8 @@ class FinanceDB:
             date_intervals = self.minutely_data_download_intervals()
             for date in date_intervals:
                 time_series_minutely = yf.download(symbol, start=date[0], end=date[1], interval='1m',
-                                                   threads='true', progress=False)
+                                                   threads='False', progress=False)
+
                 minutely_data = self.yfinance_timeseries_to_tuple(symbol, 'security_ticker', time_series_minutely)
                 cursor.execute("PRAGMA table_info(price_minutely)")
                 wildcards = ','.join(['?'] * len(cursor.fetchall()))
@@ -121,7 +123,7 @@ class FinanceDB:
 
     def yfinance_timeseries_to_tuple(self, ticker, column_name, timeseries_df):
         """
-        used to convert yfinance timeseries data (pandas dataframe) to tuple of tuples
+        Used to convert yfinance timeseries data (pandas dataframe) to tuple of tuples
         """
         timeseries_df[column_name] = [ticker] * len(timeseries_df.index)
         timeseries_df.index = timeseries_df.index.strftime("%Y-%m-%d %H:%M:%S")
@@ -131,8 +133,9 @@ class FinanceDB:
         return output
 
     def minutely_data_download_intervals(self, optional_start=(datetime.datetime.today() - datetime.timedelta(29))):
-        """Used to create date intervals when downloading minutely data
-           in most efficient manner with interval less than 7d and total span < 29 days
+        """
+        Used to create date intervals when downloading minutely data
+        in most efficient manner with interval less than 7d and total span < 29 days
         """
         intervals = []
         today = datetime.datetime.today()
@@ -205,6 +208,20 @@ class FinanceDB:
             output = [elem[0] for elem in cursor.fetchall()]
         return output
 
+    def __dbfile_md5(self, file_name):
+        hash_md5 = hashlib.md5()
+        with open(file_name, "rb") as f:
+            for chnk in iter(lambda: f.read(4096), b""):
+                hash_md5.update(chnk)
+        return hash_md5.hexdigest()
+
+    def valid_frozen_db(self, db_filename):
+        for key in DB_FROZEN_VARIANTS.keys():
+            if DB_FROZEN_VARIANTS[key]["db_filename"] == db_filename:
+                md5 = self.__dbfile_md5(self.db_path)
+                if not DB_FROZEN_VARIANTS[key]["md5sum"] == md5:
+                    raise ValueError("Frozen DB name provided, but DB file inconsistent with prepackaged DB.")
+
     def __TODO_actions_since_date(self, ticker, date):
         yf_ticker = yf.Ticker(ticker)
         actions = yf_ticker.actions
@@ -236,8 +253,9 @@ class FinanceDB:
         return data
 
     def __TODO_update(self):
-        """ Perform update of actions/daily-price/minutely-price and account for stock splits + dividends
-            Work in progress
+        """
+        Perform update of actions/daily-price/minutely-price and account for stock splits + dividends
+        Work in progress
         """
 
         tickers_present = self.get_present_tickers()
