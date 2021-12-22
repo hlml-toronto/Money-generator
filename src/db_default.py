@@ -9,6 +9,11 @@ sys.path.append(PROJECT_ROOT)
 # file io - specific file locations
 DB_DIR = PROJECT_ROOT + os.sep + 'financial_db'  # db_path files are stored here
 
+# various src file defaults
+DB_ASSUMED_TZ = 'US/Eastern'  # TODO currently used in visualize.py; assumed all database times are in US/Eastern
+DB_DEFAULT_TICKERS = ['MSFT', 'AAPL', 'HUT', 'HUT.TO', 'SPY', 'CADUSD=X', 'BTC-USD', 'ETH-USD', 'ETHX-U.TO']  # TODO remove this usage from db_class.py
+
+# schema for the database class
 DB_TABLES = ['''security (
                     ticker TEXT PRIMARY KEY,
                     name_short TEXT,
@@ -63,18 +68,30 @@ DB_TABLES = ['''security (
                     )'''
              ]
 
-DB_ASSUMED_TZ = 'US/Eastern'  # TODO currently used in visualize.py; assumed all database times are in US/Eastern
-
-# TODO e.g. have a db_generate.py which A) creates a variant if it does not exist B) checks hash otherwise
+# info for various "frozen" versions of the database intended to be read-only
 DB_FROZEN_VARIANTS = {
     'v1':
-        {'tickers': ['AMZN', 'MSFT', 'AAPL', 'HUT', 'HUT.TO', 'SPY', 'CADUSD=X', 'BTC-USD', 'ETH-USD', 'ETHX-U.TO',
-                     'SHOP.TO', 'RY', 'TD.TO', 'ENB', 'CNR.TO', 'BNS.TO', 'BMO.TO', 'CP.TO', 'TRI.TO', 'CM.TO',
-                     'GOOG', 'NVDA', 'TSLA', 'FB', 'BRK-B', 'JPM', 'PG', 'NFLX', 'DIS', 'PFE',
-                     'COST', 'ETHX-B.TO', 'XEC.TO', 'XEI.TO', 'XEF.TO', 'XUU.TO', 'XIC.TO', 'MFC', 'V', 'ADBE'
+        {'tickers': ['AMZN',    'MSFT',      'AAPL',    'HUT',     'HUT.TO',
+                     'SPY',     'CADUSD=X',  'BTC-USD', 'ETH-USD', 'ETHX-U.TO',
+                     'SHOP.TO', 'RY',        'TD.TO',   'ENB',     'CNR.TO',
+                     'BNS.TO',  'BMO.TO',    'CP.TO',   'TRI.TO',  'CM.TO',
+                     'GOOG',    'NVDA',      'TSLA',    'FB',      'BRK-B',
+                     'JPM',     'PG',        'NFLX',    'DIS',     'PFE',
+                     'COST',    'ETHX-B.TO', 'XEC.TO',  'XEI.TO',  'XEF.TO',
+                     'XUU.TO',  'XIC.TO',    'MFC',     'V',       'ADBE'
                      ],
          'db_filename': 'default_finance_v1.db',
-         'md5sum': 'd2b9a5ac0030167c853fad9fe0f7dae6'}
+         'md5sum': 'd2b9a5ac0030167c853fad9fe0f7dae6'},
+    'crypto_miners_2021_12_22':
+        {'tickers': ['BTC-USD', 'ETH-USD', 'ETHX-U.TO', 'BTCX-U.TO', 'CADUSD=X',
+                     'GLXY.TO', 'COIN',    'BKCH',      'HBLK.TO',   'HBGD.TO',
+                     'RIGZ',    'MIGI',    'LUXFF',     'FRTTF' ,    'DGHI.V',
+                     'BTBT',    'GREE',    'DMGGF',     'RIOT',      'MARA',
+                     'CLSK',    'ARBK',    'INTV',      'BITF.V',    'BITF',
+                     'HUT',     'HUT.TO',  'HIVE',      'NCTY',      'BTCM',
+                     'SDIG',    'SLNH',    'XPDI'
+                     ],
+         'db_filename': 'default_finance_crypto_miners_2021_12_22.db',
+         'md5sum': 'TODO'
+         }
 }
-
-DB_DEFAULT_TICKERS = ['MSFT', 'AAPL', 'HUT', 'HUT.TO', 'SPY', 'CADUSD=X', 'BTC-USD', 'ETH-USD', 'ETHX-U.TO']
