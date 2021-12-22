@@ -21,12 +21,15 @@ class DBCursor:
     automatically too.
     """
 
-    def __init__(self, db_filename):
+    def __init__(self, db_filename, read_only):
         self.db_filename = db_filename
+        self.read_only = read_only
 
     def __enter__(self):
         self.connection = sqlite3.connect(self.db_filename)
         self.connection.execute("PRAGMA foreign_keys = 1")
+        if self.read_only:
+            self.connection.execute("PRAGMA query_only = ON")
         self.cursor = self.connection.cursor()
         return self.cursor
 
@@ -52,11 +55,12 @@ class FinanceDB:
     def __init__(self, db_filename):
         self.db_dir = DB_DIR
         self.db_path = os.path.join(self.db_dir, db_filename)
-        self.valid_frozen_db(db_filename)
+        flag_frozen = self.valid_frozen_db(db_filename)
+        self.read_only = flag_frozen
         if not os.path.isdir(self.db_dir):
             os.makedirs(self.db_dir)
 
-        with DBCursor(self.db_path) as cursor:
+        with DBCursor(self.db_path, self.read_only) as cursor:
             for tables in DB_TABLES:
                 cursor.execute(f"CREATE TABLE IF NOT EXISTS {tables}")
 
@@ -68,7 +72,7 @@ class FinanceDB:
     def add_ticker(self, symbol):
         yf_ticker = yf.Ticker(symbol)
         ticker_info = yf_ticker.info
-        with DBCursor(self.db_path) as cursor:
+        with DBCursor(self.db_path, self.read_only) as cursor:
             # populate exchange table
             exchange_attributes = (ticker_info.get('exchange', "NULL"),
                                    ticker_info.get('exchangeTimezoneName', "NULL"),
@@ -160,21 +164,21 @@ class FinanceDB:
         return intervals
 
     def __drop_all_tables(self):
-        with DBCursor(self.db_path) as cursor:
+        with DBCursor(self.db_path, self.read_only) as cursor:
             cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
             tables = cursor.fetchall()
             for table in tables:
                 cursor.execute("DROP TABLE %s" % table[0])
 
     def __create_table(self, create_table_sql):
-        with DBCursor(self.db_path) as cursor:
+        with DBCursor(self.db_path, self.read_only) as cursor:
             try:
                 cursor.execute(create_table_sql)
             except Error as e:
                 print(e)
 
     def dataframe_from_query(self, query):
-        with DBCursor(self.db_path) as cursor:
+        with DBCursor(self.db_path, self.read_only) as cursor:
             cursor.execute(query)
             output = cursor.fetchall()
             cols = list(map(lambda x: x[0], cursor.description))
@@ -202,13 +206,13 @@ class FinanceDB:
         return df
 
     def get_present_tickers(self):
-        with DBCursor(self.db_path) as cursor:
+        with DBCursor(self.db_path, self.read_only) as cursor:
             query = "SELECT ticker FROM security"
             cursor.execute(query)
             output = [elem[0] for elem in cursor.fetchall()]
         return output
 
-    def __dbfile_md5(self, file_name):
+    def dbfile_md5(self, file_name):
         hash_md5 = hashlib.md5()
         with open(file_name, "rb") as f:
             for chnk in iter(lambda: f.read(4096), b""):
@@ -216,11 +220,15 @@ class FinanceDB:
         return hash_md5.hexdigest()
 
     def valid_frozen_db(self, db_filename):
+        flag_frozen = False
         for key in DB_FROZEN_VARIANTS.keys():
             if DB_FROZEN_VARIANTS[key]["db_filename"] == db_filename:
-                md5 = self.__dbfile_md5(self.db_path)
+                md5 = self.dbfile_md5(self.db_path)
                 if not DB_FROZEN_VARIANTS[key]["md5sum"] == md5:
                     raise ValueError("Frozen DB name provided, but DB file inconsistent with prepackaged DB.")
+                else:
+                    flag_frozen = True
+        return flag_frozen
 
     def __TODO_actions_since_date(self, ticker, date):
         yf_ticker = yf.Ticker(ticker)
@@ -276,7 +284,7 @@ class FinanceDB:
                     # do daily updates
                     daily_data = self.__TODO_fetch_daily_between(ticker, latest_daily, today)
 
-                    with DBCursor(self.db_path) as cursor:
+                    with DBCursor(self.db_path, self.read_only) as cursor:
                         cursor.execute("PRAGMA table_info(price_daily)")
                         wildcards = ','.join(['?'] * len(cursor.fetchall()))
                         cursor.executemany("INSERT OR IGNORE INTO price_daily VALUES (%s)" % wildcards, daily_data)
@@ -286,7 +294,7 @@ class FinanceDB:
 
                         minutely_data = self.__TODO_fetch_minutely_starting_at(ticker, today - datetime.timedelta(1))
 
-                        with DBCursor(self.db_path) as cursor:
+                        with DBCursor(self.db_path, self.read_only) as cursor:
                             cursor.execute("PRAGMA table_info(price_minutely)")
                             wildcards = ','.join(['?'] * len(cursor.fetchall()))
                             cursor.executemany("INSERT OR IGNORE INTO price_minutely VALUES (%s)" % wildcards,
