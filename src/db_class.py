@@ -37,7 +37,7 @@ class DBCursor:
         self.connection.commit()
         self.connection.close()
         if exc_type is not None:
-            traceback.print_exception(exc_type, exc_value, traceback)
+            print(exc_type, exc_value)
         return
 
 
