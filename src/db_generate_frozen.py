@@ -2,8 +2,8 @@ import os
 import random
 import time
 
-from db_class import FinanceDB
 from db_default import DB_DIR
+from db_class import FinanceDB
 
 
 def generate_frozen_db(ticker_list, db_filename='default_finance_generated_frozen.db', sleep=True):
@@ -31,10 +31,10 @@ def generate_frozen_db(ticker_list, db_filename='default_finance_generated_froze
 
 if __name__ == '__main__':
     frozen_ticker_list = ['BTC-USD', 'ETH-USD', 'ETHX-U.TO', 'BTCX-U.TO', 'CADUSD=X',
-                          'GLXY.TO', 'COIN',    'BKCH',      'HBLK.TO',   'HBGD.TO',
-                          'RIGZ',    'MIGI',    'LUXFF',     'FRTTF' ,    'DGHI.V',
-                          'BTBT',    'GREE',    'DMGGF',     'RIOT',      'MARA',
-                          'CLSK',    'ARBK',    'INTV',      'BITF.V',    'BITF',
-                          'HUT',     'HUT.TO',  'HIVE',      'NCTY',      'BTCM',
-                          'SDIG',    'SLNH',    'XPDI']
+                          'GLXY.TO', 'COIN', 'BKCH', 'HBLK.TO', 'HBGD.TO',
+                          'RIGZ', 'MIGI', 'LUXFF', 'FRTTF', 'DGHI.V',
+                          'BTBT', 'GREE', 'DMGGF', 'RIOT', 'MARA',
+                          'CLSK', 'ARBK', 'INTV', 'BITF.V', 'BITF',
+                          'HUT', 'HUT.TO', 'HIVE', 'NCTY', 'BTCM',
+                          'SDIG', 'SLNH', 'XPDI']
     generate_frozen_db(frozen_ticker_list)

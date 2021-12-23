@@ -92,6 +92,6 @@ DB_FROZEN_VARIANTS = {
                      'SDIG',    'SLNH',    'XPDI'
                      ],
          'db_filename': 'default_finance_crypto_miners_2021_12_22.db',
-         'md5sum': 'TODO'
+         'md5sum': '3dd7224060433292c5feeba1d85b4367'
          }
 }
