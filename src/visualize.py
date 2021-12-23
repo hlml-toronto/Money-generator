@@ -4,8 +4,8 @@ import numpy as np
 import pandas as pd
 from datetime import datetime, timedelta
 
-from src.db_class import FinanceDB
 from src.db_default import DB_ASSUMED_TZ, DB_FROZEN_VARIANTS
+from src.db_class import FinanceDB
 
 
 def plot_timeseries(df, ticker, column='close', interval='minutes'):
